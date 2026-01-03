@@ -1,0 +1,8 @@
+strategy:
+  min_edge_pct: 1.5
+  max_stake: 50
+  max_exposure_per_market: 100
+  per_day_loss_limit: 500
+  per_book_limit:
+    draftkings: 250
+    espn: 0

@@ -1,0 +1,1 @@
+"""Core package for the sports betting arbitrage bot."""
