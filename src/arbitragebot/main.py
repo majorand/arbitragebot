@@ -42,10 +42,8 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
     draftkings_cfg = sources_config.get("draftkings", {})
     fanduel_cfg = sources_config.get("fanduel", {})
 
+    # Kalshi elections API endpoint (hardcoded - this is the public API)
     kalshi = KalshiDataSource(
-        base_url=kalshi_cfg.get(
-            "base_url", os.getenv("KALSHI_API", "https://api.kalshi.com")
-        ),
         api_key=os.getenv("KALSHI_API_KEY"),
     )
     # ESPN uses public API, no config needed
