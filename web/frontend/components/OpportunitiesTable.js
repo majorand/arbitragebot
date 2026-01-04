@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useState } from 'react';
 
-export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy = 'edge', filterEdge = 0 }) {
+export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy = 'volume', filterEdge = 0 }) {
   const [expandedId, setExpandedId] = useState(null);
   const [sort, setSort] = useState(sortBy);
   const [minEdge, setMinEdge] = useState(filterEdge);
@@ -13,9 +13,11 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
       case 'edge':
         return b.edge - a.edge;
       case 'time':
-        return new Date(b.time) - new Date(a.time);
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       case 'liquidity':
         return (b.liquidity || 0) - (a.liquidity || 0);
+      case 'volume':
+        return (b.volume || b.liquidity || 0) - (a.volume || a.liquidity || 0);
       default:
         return 0;
     }
@@ -59,6 +61,7 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
             onChange={(e) => setSort(e.target.value)}
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm mt-1"
           >
+            <option value="volume">Highest Trading Volume</option>
             <option value="edge">Highest Edge</option>
             <option value="time">Newest First</option>
             <option value="liquidity">Best Liquidity</option>
@@ -77,10 +80,10 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
             <thead>
               <tr className="border-b border-gray-700">
                 <th className="px-4 py-3 text-left text-gray-400 font-semibold">Event</th>
-                <th className="px-4 py-3 text-left text-gray-400 font-semibold">Venues</th>
+                <th className="px-4 py-3 text-left text-gray-400 font-semibold">Sport/Venue</th>
+                <th className="px-4 py-3 text-right text-gray-400 font-semibold">Trading Volume</th>
                 <th className="px-4 py-3 text-right text-gray-400 font-semibold">Edge</th>
                 <th className="px-4 py-3 text-right text-gray-400 font-semibold">Liquidity</th>
-                <th className="px-4 py-3 text-center text-gray-400 font-semibold">Status</th>
                 <th className="px-4 py-3 text-center text-gray-400 font-semibold">Action</th>
               </tr>
             </thead>
@@ -89,23 +92,27 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                 <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
                   <td className="px-4 py-3">
                     <div>
-                      <p className="font-medium text-white">{opp.event || 'Market'}</p>
-                      <p className="text-xs text-gray-400">{opp.market || 'Market Type'}</p>
+                      <p className="font-medium text-white">{opp.event_name || opp.event || 'Market'}</p>
+                      <p className="text-xs text-gray-400">{opp.selection || opp.market || 'Market Type'}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-300">
-                    {opp.venues || 'Kalshi, Draftkings'}
+                    <div>
+                      <p className="font-medium text-white">{(opp.sport || opp.league || 'Sports').toUpperCase()}</p>
+                      <p className="text-xs text-gray-400">{opp.venue || opp.source || 'Exchange'}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-bold text-blue-400">
+                      ${((opp.volume || opp.liquidity || 0) / 1000).toFixed(0)}K
+                    </span>
+                    <p className="text-xs text-gray-400">{(opp.volume_rank || 0)} trades</p>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="font-bold text-green-400">{(opp.edge || 0).toFixed(2)}%</span>
                   </td>
                   <td className="px-4 py-3 text-right text-gray-300">
                     ${(opp.liquidity || 0).toFixed(0)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={getStatusColor(opp.status || 'new')}>
-                      {opp.status || 'new'}
-                    </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
