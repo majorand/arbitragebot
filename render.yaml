@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: arbitragebot-api
+    env: docker
+    plan: free
+    autoDeploy: true
+    branch: main
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: KALSHI_API_KEY
+        sync: false
+      - key: KALSHI_API
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: FRONTEND_ORIGINS
+        value: https://your-frontend.vercel.app
+      - key: TRADING_MODE
+        value: paper
+      - key: SOURCES_CONFIG
+        value: config/example_sources.yaml
