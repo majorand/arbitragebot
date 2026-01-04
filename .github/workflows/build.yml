@@ -22,6 +22,7 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
+        cache-dependency-path: web/frontend/package-lock.json
 
     - name: Install dependencies
       run: |
