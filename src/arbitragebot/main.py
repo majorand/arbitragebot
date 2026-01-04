@@ -48,9 +48,8 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
         ),
         api_key=os.getenv("KALSHI_API_KEY"),
     )
-    espn = ESPNDataSource(
-        base_url=espn_cfg.get("base_url", "https://site.api.espn.com/apis/site/v2")
-    )
+    # ESPN uses public API, no config needed
+    espn = ESPNDataSource()
     draftkings = DraftKingsDataSource(
         base_url=draftkings_cfg.get(
             "base_url", "https://sportsbook.draftkings.com/sites/US-SB/api/v5"
@@ -77,8 +76,7 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
 
     try:
         LOGGER.info("Fetching ESPN events...")
-        events = espn.fetch_events("basketball", "nba")
-        espn_data = espn.normalize_events(events)
+        espn_data = espn.get_upcoming_games("basketball", "nba")
         other_odds.extend(espn_data)
         LOGGER.info(f"Got {len(espn_data)} ESPN events")
     except Exception as exc:

@@ -22,6 +22,7 @@ class NormalizedOdds:
     implied_probability: float
     source: str
     last_updated: datetime
+    american_odds: Optional[float] = None
 
 
 @dataclass
