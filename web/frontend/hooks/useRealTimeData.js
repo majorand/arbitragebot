@@ -10,7 +10,7 @@ const API_BASE_URL =
  * Updates store incrementally (no full-page reloads)
  */
 export function useRealTimeData() {
-  const store = useBotStore();
+  const storeRef = useRef(useBotStore.getState());
   const wsRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef(null);
@@ -29,72 +29,71 @@ export function useRealTimeData() {
   }, []);
 
   // Handle incoming stream messages
-  const handleStreamMessage = useCallback(
-    (data) => {
-      if (!data) return;
+  const handleStreamMessage = useCallback((data) => {
+    if (!data) return;
 
-      // Update connection state
-      store.setLastHeartbeat(new Date().toISOString());
+    const store = useBotStore.getState();
 
-      // Update opportunities
-      if (data.opportunities && Array.isArray(data.opportunities)) {
-        store.updateOpportunities(data.opportunities);
-      }
+    // Update connection state
+    store.setLastHeartbeat(new Date().toISOString());
 
-      // Update single opportunity (for partial updates)
-      if (data.opportunity) {
-        store.updateOpportunity(data.opportunity.market_id, data.opportunity);
-      }
+    // Update opportunities
+    if (data.opportunities && Array.isArray(data.opportunities)) {
+      store.updateOpportunities(data.opportunities);
+    }
 
-      // Update positions
-      if (data.positions && Array.isArray(data.positions)) {
-        store.updatePositions(data.positions);
-      }
+    // Update single opportunity (for partial updates)
+    if (data.opportunity) {
+      store.updateOpportunity(data.opportunity.market_id, data.opportunity);
+    }
 
-      // Update single position
-      if (data.position) {
-        store.updatePosition(data.position.position_id, data.position);
-      }
+    // Update positions
+    if (data.positions && Array.isArray(data.positions)) {
+      store.updatePositions(data.positions);
+    }
 
-      // Add new trade
-      if (data.trade) {
-        store.addTrade(data.trade);
-      }
+    // Update single position
+    if (data.position) {
+      store.updatePosition(data.position.position_id, data.position);
+    }
 
-      // Update trades list
-      if (data.trades && Array.isArray(data.trades)) {
-        store.updateTrades(data.trades);
-      }
+    // Add new trade
+    if (data.trade) {
+      store.addTrade(data.trade);
+    }
 
-      // Update metrics
-      if (data.metrics) {
-        store.updateMetrics(data.metrics);
-      }
+    // Update trades list
+    if (data.trades && Array.isArray(data.trades)) {
+      store.updateTrades(data.trades);
+    }
 
-      // Update health
-      if (data.health) {
-        Object.entries(data.health).forEach(([source, status]) => {
-          store.updateHealth(source, status);
-        });
-      }
+    // Update metrics
+    if (data.metrics) {
+      store.updateMetrics(data.metrics);
+    }
 
-      // Update equity curve
-      if (data.equity_curve && Array.isArray(data.equity_curve)) {
-        store.updateEquityCurve(data.equity_curve);
-      }
+    // Update health
+    if (data.health) {
+      Object.entries(data.health).forEach(([source, status]) => {
+        store.updateHealth(source, status);
+      });
+    }
 
-      // Add single equity point
-      if (data.equity_point) {
-        store.addEquityPoint(data.equity_point);
-      }
+    // Update equity curve
+    if (data.equity_curve && Array.isArray(data.equity_curve)) {
+      store.updateEquityCurve(data.equity_curve);
+    }
 
-      // Update mode
-      if (data.mode) {
-        store.setMode(data.mode);
-      }
-    },
-    [store]
-  );
+    // Add single equity point
+    if (data.equity_point) {
+      store.addEquityPoint(data.equity_point);
+    }
+
+    // Update mode
+    if (data.mode) {
+      store.setMode(data.mode);
+    }
+  }, []);
 
   // Reset heartbeat timeout
   const resetHeartbeatTimeout = useCallback(() => {
@@ -114,6 +113,7 @@ export function useRealTimeData() {
       return; // Already connected
     }
 
+    const store = useBotStore.getState();
     store.setConnectionState('connecting');
     store.setConnectionError(null);
 
@@ -129,8 +129,9 @@ export function useRealTimeData() {
       ws.onopen = () => {
         console.log('WebSocket connected');
         reconnectAttemptsRef.current = 0;
-        store.setConnectionState('connected');
-        store.setConnectionError(null);
+        const st = useBotStore.getState();
+        st.setConnectionState('connected');
+        st.setConnectionError(null);
         resetHeartbeatTimeout();
       };
 
@@ -146,7 +147,8 @@ export function useRealTimeData() {
 
       ws.onerror = (err) => {
         console.error('WebSocket error:', err);
-        store.setConnectionError('WebSocket connection failed');
+        const st = useBotStore.getState();
+        st.setConnectionError('WebSocket connection failed');
       };
 
       ws.onclose = () => {
@@ -160,13 +162,15 @@ export function useRealTimeData() {
       wsRef.current = ws;
     } catch (err) {
       console.error('Failed to create WebSocket:', err);
-      store.setConnectionError(err.message);
+      const st = useBotStore.getState();
+      st.setConnectionError(err.message);
       attemptReconnect();
     }
-  }, [store, handleStreamMessage, resetHeartbeatTimeout]);
+  }, [handleStreamMessage, resetHeartbeatTimeout, attemptReconnect]);
 
   // Try Server-Sent Events as fallback
   const connectSSE = useCallback(() => {
+    const store = useBotStore.getState();
     store.setConnectionState('connecting');
     store.setConnectionError(null);
 
@@ -177,8 +181,9 @@ export function useRealTimeData() {
     eventSource.onopen = () => {
       console.log('SSE connected');
       reconnectAttemptsRef.current = 0;
-      store.setConnectionState('connected');
-      store.setConnectionError(null);
+      const st = useBotStore.getState();
+      st.setConnectionState('connected');
+      st.setConnectionError(null);
       resetHeartbeatTimeout();
     };
 
@@ -195,15 +200,17 @@ export function useRealTimeData() {
     eventSource.onerror = (err) => {
       console.error('SSE error:', err);
       eventSource.close();
-      store.setConnectionError('SSE connection failed');
+      const st = useBotStore.getState();
+      st.setConnectionError('SSE connection failed');
       attemptReconnect();
     };
 
     wsRef.current = eventSource;
-  }, [store, handleStreamMessage, resetHeartbeatTimeout]);
+  }, [handleStreamMessage, resetHeartbeatTimeout, attemptReconnect]);
 
   // Fallback to polling REST API
   const startPolling = useCallback(() => {
+    const store = useBotStore.getState();
     store.setConnectionState('connected');
     console.log('Starting REST polling fallback');
 
@@ -217,21 +224,24 @@ export function useRealTimeData() {
 
         const data = await response.json();
         handleStreamMessage(data);
-        store.setConnectionError(null);
+        const st = useBotStore.getState();
+        st.setConnectionError(null);
       } catch (err) {
         console.error('Polling error:', err);
-        store.setConnectionError(err.message);
+        const st = useBotStore.getState();
+        st.setConnectionError(err.message);
       }
     }, 2000); // Poll every 2 seconds
 
     // Store interval ID for cleanup
     wsRef.current = { pollInterval, type: 'polling' };
-  }, [store, handleStreamMessage]);
+  }, [handleStreamMessage]);
 
   // Attempt reconnection with backoff
   const attemptReconnect = useCallback(() => {
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
       console.error('Max reconnection attempts reached');
+      const store = useBotStore.getState();
       store.setConnectionState('disconnected');
       store.setConnectionError('Max reconnection attempts reached');
       return;
@@ -244,12 +254,13 @@ export function useRealTimeData() {
       `Reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`
     );
 
+    const store = useBotStore.getState();
     store.setConnectionState('reconnecting');
 
     reconnectTimeoutRef.current = setTimeout(() => {
       connectWebSocket();
     }, delay);
-  }, [store, connectWebSocket, getReconnectDelay]);
+  }, [getReconnectDelay, connectWebSocket]);
 
   // Initialize connection
   useEffect(() => {
@@ -273,12 +284,17 @@ export function useRealTimeData() {
         clearTimeout(heartbeatTimeoutRef.current);
       }
     };
-  }, [connectWebSocket]);
+  }, []);
+
+  // Return connection state using hook instead of ref
+  const connectionState = useBotStore((state) => state.connectionState);
+  const lastHeartbeat = useBotStore((state) => state.lastHeartbeat);
+  const connectionError = useBotStore((state) => state.lastConnectionError);
 
   return {
-    connectionState: store.connectionState,
-    lastHeartbeat: store.lastHeartbeat,
-    connectionError: store.lastConnectionError,
+    connectionState,
+    lastHeartbeat,
+    connectionError,
   };
 }
 
