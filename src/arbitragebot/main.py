@@ -8,6 +8,7 @@ from typing import List
 from arbitragebot.config import StrategyConfig, TradingConfig, load_yaml
 from arbitragebot.data_sources.draftkings import DraftKingsDataSource
 from arbitragebot.data_sources.espn import ESPNDataSource
+from arbitragebot.data_sources.fanduel import FanDuelDataSource
 from arbitragebot.data_sources.kalshi import KalshiDataSource
 from arbitragebot.execution.paper import PaperTradingEngine
 from arbitragebot.exchanges.kalshi import KalshiTradingClient
@@ -19,9 +20,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
+    """Collect odds from all sources and find arbitrage opportunities vs Kalshi.
+    
+    Strategy:
+    1. Fetch Kalshi odds (primary exchange for placing trades)
+    2. Fetch ESPN events (data source)
+    3. Fetch DraftKings odds (comparison)
+    4. Fetch FanDuel odds (comparison)
+    5. Compare all sources to Kalshi and identify edges
+    """
     kalshi_cfg = sources_config.get("kalshi", {})
     espn_cfg = sources_config.get("espn", {})
     draftkings_cfg = sources_config.get("draftkings", {})
+    fanduel_cfg = sources_config.get("fanduel", {})
 
     kalshi = KalshiDataSource(
         base_url=kalshi_cfg.get(
@@ -37,26 +48,127 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
             "base_url", "https://sportsbook.draftkings.com/sites/US-SB/api/v5"
         )
     )
+    fanduel = FanDuelDataSource(
+        base_url=fanduel_cfg.get("base_url", "https://api.fanduel.com/v4")
+    )
 
-    data: List[NormalizedOdds] = []
+    # Collect odds from all sources
+    kalshi_odds: List[NormalizedOdds] = []
+    other_odds: List[NormalizedOdds] = []
+    
     try:
-        data.extend(kalshi.normalize_markets(kalshi.fetch_markets()))
-    except Exception as exc:  # noqa: BLE001 - log and continue
+        LOGGER.info("Fetching Kalshi markets...")
+        kalshi_odds = kalshi.normalize_markets(kalshi.fetch_markets())
+        LOGGER.info(f"Got {len(kalshi_odds)} Kalshi odds")
+    except Exception as exc:
         LOGGER.warning("Failed to fetch Kalshi markets: %s", exc)
 
     try:
+        LOGGER.info("Fetching ESPN events...")
         events = espn.fetch_events("basketball", "nba")
-        data.extend(espn.normalize_events(events))
-    except Exception as exc:  # noqa: BLE001 - log and continue
+        espn_data = espn.normalize_events(events)
+        other_odds.extend(espn_data)
+        LOGGER.info(f"Got {len(espn_data)} ESPN events")
+    except Exception as exc:
         LOGGER.warning("Failed to fetch ESPN events: %s", exc)
 
     try:
+        LOGGER.info("Fetching DraftKings odds...")
         odds = draftkings.fetch_odds("42648")
-        data.extend(draftkings.normalize_odds(odds))
-    except Exception as exc:  # noqa: BLE001 - log and continue
+        dk_data = draftkings.normalize_odds(odds)
+        other_odds.extend(dk_data)
+        LOGGER.info(f"Got {len(dk_data)} DraftKings odds")
+    except Exception as exc:
         LOGGER.warning("Failed to fetch DraftKings odds: %s", exc)
 
-    return data
+    try:
+        LOGGER.info("Fetching FanDuel odds...")
+        odds = fanduel.fetch_odds()
+        fd_data = fanduel.normalize_odds(odds)
+        other_odds.extend(fd_data)
+        LOGGER.info(f"Got {len(fd_data)} FanDuel odds")
+    except Exception as exc:
+        LOGGER.warning("Failed to fetch FanDuel odds: %s", exc)
+
+    # Find arbitrage opportunities: where other sources differ from Kalshi
+    arbitrage_opportunities = _find_arbitrage_opportunities(kalshi_odds, other_odds)
+    
+    # Return Kalshi odds plus arbitrage edges
+    return arbitrage_opportunities if arbitrage_opportunities else kalshi_odds
+
+
+def _find_arbitrage_opportunities(
+    kalshi_odds: List[NormalizedOdds], 
+    other_odds: List[NormalizedOdds]
+) -> List[NormalizedOdds]:
+    """Compare odds across sources to find arbitrage edges.
+    
+    An arbitrage exists when:
+    - Kalshi has one side of a bet
+    - Another sportsbook has better odds on the opposite side
+    - The combined implied probabilities are < 100% (profit opportunity)
+    """
+    opportunities = []
+    min_edge_pct = 1.5  # Minimum 1.5% edge to be profitable
+    
+    # Group odds by event for comparison
+    kalshi_by_event = {}
+    for odd in kalshi_odds:
+        key = (odd.event_id, odd.market_type, odd.selection)
+        if key not in kalshi_by_event:
+            kalshi_by_event[key] = odd
+    
+    other_by_event = {}
+    for odd in other_odds:
+        key = (odd.event_id, odd.market_type, odd.selection)
+        if key not in other_by_event:
+            other_by_event[key] = odd
+    
+    # Find edges: compare Kalshi to other sources
+    for (event_id, market_type, selection), kalshi_odd in kalshi_by_event.items():
+        key = (event_id, market_type, selection)
+        
+        # Find opposite side bets
+        opposite_selections = [sel for (e, m, sel) in other_by_event.keys() 
+                             if e == event_id and m == market_type and sel != selection]
+        
+        for opp_side in opposite_selections:
+            opp_key = (event_id, market_type, opp_side)
+            other_odd = other_by_event.get(opp_key)
+            
+            if not other_odd:
+                continue
+            
+            # Calculate edge
+            # If Kalshi: YES = 0.55 (55% prob), OTHER: NO = 0.45 (55% prob)
+            # Combined = 55% + 55% = 110% (overround) = 10% vig to beat
+            combined_prob = kalshi_odd.implied_probability + other_odd.implied_probability
+            edge_pct = max(0, (1.0 - combined_prob) * 100)
+            
+            if edge_pct >= min_edge_pct:
+                # Create opportunity
+                opp = kalshi_odd.__class__(
+                    sport=kalshi_odd.sport,
+                    league=kalshi_odd.league,
+                    event_id=kalshi_odd.event_id,
+                    start_time=kalshi_odd.start_time,
+                    home_team=kalshi_odd.home_team,
+                    away_team=kalshi_odd.away_team,
+                    market_type=kalshi_odd.market_type,
+                    selection=kalshi_odd.selection,
+                    price=kalshi_odd.price,
+                    implied_probability=kalshi_odd.implied_probability,
+                    source="kalshi",
+                    last_updated=kalshi_odd.last_updated,
+                )
+                # Add metadata about the arb
+                opp.edge = edge_pct
+                opp.vs_source = other_odd.source
+                opp.vs_price = other_odd.price
+                opportunities.append(opp)
+    
+    LOGGER.info(f"Found {len(opportunities)} arbitrage opportunities")
+    return opportunities if opportunities else kalshi_odds
 
 
 def load_strategy_config(path: Path) -> StrategyConfig:
