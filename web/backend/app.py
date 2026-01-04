@@ -139,12 +139,21 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     print(f"Failed to fetch database data: {e}")
                     # Continue with empty data
                 
-                # Format opportunities for frontend
+                # Format opportunities for frontend with full arbitrage details
                 opportunities = []
                 for idx, opp in enumerate(opportunities_raw):
                     # Generate trading volume (random but consistent per market)
                     market_hash = int(hashlib.md5(opp.event_id.encode()).hexdigest(), 16)
                     base_volume = (market_hash % 50000) + 10000  # 10K-60K per market
+                    
+                    # Get arbitrage details if available
+                    edge = getattr(opp, 'edge', 0)
+                    vs_source = getattr(opp, 'vs_source', None)
+                    vs_price = getattr(opp, 'vs_price', None)
+                    vs_selection = getattr(opp, 'vs_selection', None)
+                    stake_kalshi = getattr(opp, 'recommended_stake_kalshi', 0)
+                    stake_other = getattr(opp, 'recommended_stake_other', 0)
+                    vs_american = getattr(opp, 'vs_american_odds', None)
                     
                     opportunities.append({
                         "market_id": opp.event_id,
@@ -158,9 +167,19 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         "volume": base_volume,
                         "volume_rank": len(opportunities_raw) - idx,
                         "liquidity": base_volume * 0.7,
-                        "edge": round((opp.implied_probability - 0.5) * 100, 2) if opp.implied_probability else 0,
+                        "edge": edge,
                         "recommended_side": opp.selection,
                         "created_at": datetime.utcnow().isoformat(),
+                        
+                        # Arbitrage details
+                        "is_arbitrage": edge >= 1.5,
+                        "vs_source": vs_source,
+                        "vs_price": vs_price,
+                        "vs_selection": vs_selection,
+                        "vs_american_odds": vs_american,
+                        "stake_kalshi": round(stake_kalshi, 2) if stake_kalshi else None,
+                        "stake_other": round(stake_other, 2) if stake_other else None,
+                        "roi_percentage": edge,
                     })
                 
                 # Format positions

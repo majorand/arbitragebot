@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from typing import Iterable, List
 
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.utils.http import build_session, request_json
 from arbitragebot.utils.time import parse_iso_datetime
+from arbitragebot.utils.odds import american_to_decimal, decimal_to_probability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,17 +18,52 @@ class FanDuelDataSource:
     
     FanDuel provides publicly accessible odds through their API.
     No authentication required for odds data.
+    
+    Rate limiting: 30 requests per minute recommended.
     """
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, rate_limit_per_minute: int = 30) -> None:
         self.base_url = base_url.rstrip("/")
         self.session = build_session()
+        self.rate_limit = rate_limit_per_minute
+        self.last_request_time = 0.0
+        self._request_count = 0
+        self._window_start = time.time()
 
-    def fetch_odds(self) -> List[dict]:
-        """Fetch available odds from FanDuel."""
+    def _check_rate_limit(self) -> None:
+        """Enforce rate limiting."""
+        now = time.time()
+        
+        # Reset counter if minute window passed
+        if now - self._window_start >= 60:
+            self._request_count = 0
+            self._window_start = now
+        
+        # Check if at limit
+        if self._request_count >= self.rate_limit:
+            sleep_time = 60 - (now - self._window_start)
+            if sleep_time > 0:
+                LOGGER.info(f"Rate limit reached, sleeping {sleep_time:.1f}s")
+                time.sleep(sleep_time)
+                self._request_count = 0
+                self._window_start = time.time()
+        
+        self._request_count += 1
+
+    def fetch_odds(self, sport: str = "football") -> List[dict]:
+        """Fetch available odds from FanDuel.
+        
+        Args:
+            sport: Sport to fetch (e.g., "football", "basketball")
+        """
+        self._check_rate_limit()
+        
         url = f"{self.base_url}/events"
         LOGGER.debug("Fetching FanDuel odds from %s", url)
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
         try:
             payload = request_json(self.session, "GET", url, headers=headers)
             return payload.get("events", [])
@@ -48,12 +85,14 @@ class FanDuelDataSource:
                 for market in markets:
                     runners = market.get("runners", [])
                     for runner in runners:
-                        price = float(runner.get("price", {}).get("decimal", 0))
-                        if price <= 0 or price > 2.0:
+                        # FanDuel uses American odds
+                        american_odds = runner.get("price", {}).get("american", 0)
+                        if american_odds == 0:
                             continue
-                            
-                        # Convert decimal odds to implied probability
-                        implied = 1.0 / price if price > 0 else 0.5
+                        
+                        # Convert to decimal and probability
+                        decimal_odds = american_to_decimal(american_odds)
+                        implied_prob = decimal_to_probability(decimal_odds)
                         
                         normalized.append(
                             NormalizedOdds(
@@ -65,8 +104,8 @@ class FanDuelDataSource:
                                 away_team=event.get("awayTeam", ""),
                                 market_type=market.get("marketType", "moneyline").lower(),
                                 selection=runner.get("name", "unknown"),
-                                price=price,
-                                implied_probability=min(max(implied, 0.0), 1.0),
+                                price=decimal_odds,
+                                implied_probability=implied_prob,
                                 source="fanduel",
                                 last_updated=now,
                             )

@@ -5,6 +5,13 @@ import os
 from pathlib import Path
 from typing import List
 
+from arbitragebot.arbitrage import (
+    is_arbitrage,
+    calculate_arbitrage_percentage,
+    allocate_stakes,
+    ArbitrageOpportunity,
+    ArbitrageLeg,
+)
 from arbitragebot.config import StrategyConfig, TradingConfig, load_yaml
 from arbitragebot.data_sources.draftkings import DraftKingsDataSource
 from arbitragebot.data_sources.espn import ESPNDataSource
@@ -14,6 +21,7 @@ from arbitragebot.execution.paper import PaperTradingEngine
 from arbitragebot.exchanges.kalshi import KalshiTradingClient
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.strategies.arbitrage import CrossMarketArbitrageStrategy
+from arbitragebot.utils.odds import decimal_to_american
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -112,7 +120,8 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
 
 def _find_arbitrage_opportunities(
     kalshi_odds: List[NormalizedOdds], 
-    other_odds: List[NormalizedOdds]
+    other_odds: List[NormalizedOdds],
+    min_edge_pct: float = 1.5
 ) -> List[NormalizedOdds]:
     """Compare odds across sources to find arbitrage edges.
     
@@ -120,9 +129,10 @@ def _find_arbitrage_opportunities(
     - Kalshi has one side of a bet
     - Another sportsbook has better odds on the opposite side
     - The combined implied probabilities are < 100% (profit opportunity)
+    
+    Uses proper arbitrage mathematics from arbitrage.calculator module.
     """
     opportunities = []
-    min_edge_pct = 1.5  # Minimum 1.5% edge to be profitable
     
     # Group odds by event for comparison
     kalshi_by_event = {}
@@ -139,11 +149,11 @@ def _find_arbitrage_opportunities(
     
     # Find edges: compare Kalshi to other sources
     for (event_id, market_type, selection), kalshi_odd in kalshi_by_event.items():
-        key = (event_id, market_type, selection)
-        
         # Find opposite side bets
-        opposite_selections = [sel for (e, m, sel) in other_by_event.keys() 
-                             if e == event_id and m == market_type and sel != selection]
+        opposite_selections = [
+            sel for (e, m, sel) in other_by_event.keys() 
+            if e == event_id and m == market_type and sel != selection
+        ]
         
         for opp_side in opposite_selections:
             opp_key = (event_id, market_type, opp_side)
@@ -152,36 +162,50 @@ def _find_arbitrage_opportunities(
             if not other_odd:
                 continue
             
-            # Calculate edge
-            # If Kalshi: YES = 0.55 (55% prob), OTHER: NO = 0.45 (55% prob)
-            # Combined = 55% + 55% = 110% (overround) = 10% vig to beat
-            combined_prob = kalshi_odd.implied_probability + other_odd.implied_probability
-            edge_pct = max(0, (1.0 - combined_prob) * 100)
+            # Check for arbitrage using proper calculator
+            decimal_odds = [kalshi_odd.price, other_odd.price]
             
-            if edge_pct >= min_edge_pct:
-                # Create opportunity
-                opp = kalshi_odd.__class__(
-                    sport=kalshi_odd.sport,
-                    league=kalshi_odd.league,
-                    event_id=kalshi_odd.event_id,
-                    start_time=kalshi_odd.start_time,
-                    home_team=kalshi_odd.home_team,
-                    away_team=kalshi_odd.away_team,
-                    market_type=kalshi_odd.market_type,
-                    selection=kalshi_odd.selection,
-                    price=kalshi_odd.price,
-                    implied_probability=kalshi_odd.implied_probability,
-                    source="kalshi",
-                    last_updated=kalshi_odd.last_updated,
-                )
-                # Add metadata about the arb
-                opp.edge = edge_pct
-                opp.vs_source = other_odd.source
-                opp.vs_price = other_odd.price
-                opportunities.append(opp)
+            if not is_arbitrage(decimal_odds, fee_buffer=0.005):
+                continue
+            
+            # Calculate actual arbitrage percentage
+            arb_pct = calculate_arbitrage_percentage(decimal_odds) * 100
+            
+            if arb_pct < min_edge_pct:
+                continue
+            
+            # Calculate stake allocation for $100 bankroll
+            stakes = allocate_stakes(100.0, decimal_odds)
+            
+            # Create opportunity with enriched data
+            opp = kalshi_odd.__class__(
+                sport=kalshi_odd.sport,
+                league=kalshi_odd.league,
+                event_id=kalshi_odd.event_id,
+                start_time=kalshi_odd.start_time,
+                home_team=kalshi_odd.home_team,
+                away_team=kalshi_odd.away_team,
+                market_type=kalshi_odd.market_type,
+                selection=kalshi_odd.selection,
+                price=kalshi_odd.price,
+                implied_probability=kalshi_odd.implied_probability,
+                source="kalshi",
+                last_updated=kalshi_odd.last_updated,
+            )
+            
+            # Add arbitrage metadata
+            opp.edge = arb_pct
+            opp.vs_source = other_odd.source
+            opp.vs_price = other_odd.price
+            opp.vs_selection = other_odd.selection
+            opp.recommended_stake_kalshi = stakes[0]
+            opp.recommended_stake_other = stakes[1]
+            opp.vs_american_odds = decimal_to_american(other_odd.price)
+            
+            opportunities.append(opp)
     
-    LOGGER.info(f"Found {len(opportunities)} arbitrage opportunities")
-    return opportunities if opportunities else kalshi_odds
+    LOGGER.info(f"Found {len(opportunities)} arbitrage opportunities >= {min_edge_pct}%")
+    return sorted(opportunities, key=lambda x: x.edge, reverse=True)
 
 
 def _generate_mock_opportunities() -> List[NormalizedOdds]:
