@@ -53,9 +53,9 @@ for sport, league, name in sports_tests:
             'odds_entries': len(normalized),
             'sample': normalized[:2] if normalized else []
         }
-        print(f"✓ {name:20} | {len(events):2} events | {len(normalized):2} odds entries")
+        print(f"[OK] {name:20} | {len(events):2} events | {len(normalized):2} odds entries")
     except Exception as e:
-        print(f"✗ {name:20} | Error: {str(e)[:60]}")
+        print(f"[FAIL] {name:20} | Error: {str(e)[:60]}")
         all_results[name] = {'status': 'ERROR', 'error': str(e)}
 
 print("\n" + "=" * 80)
