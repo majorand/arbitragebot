@@ -17,3 +17,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+arbitrage-backend = "web.backend.app:app"
+arbitrage-bot = "arbitragebot.main:run_once"
