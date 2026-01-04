@@ -17,6 +17,13 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Ensure frontend lockfile exists
+      run: |
+        if [ -f web/frontend/package.json ] && [ ! -f web/frontend/package-lock.json ]; then
+          cd web/frontend
+          npm install --package-lock-only
+        fi
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v3
       with:
