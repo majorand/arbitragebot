@@ -1,4 +1,7 @@
 {
   "buildCommand": "cd web/frontend && npm run build",
-  "outputDirectory": "web/frontend/.next"
+  "outputDirectory": "web/frontend/.next",
+  "env": {
+    "NEXT_PUBLIC_API_BASE_URL": "https://api.example.com"
+  }
 }
