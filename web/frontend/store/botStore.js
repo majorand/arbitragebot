@@ -13,6 +13,7 @@ export const useBotStore = create((set, get) => ({
 
   // Mode (paper vs live)
   mode: 'paper',
+  paperTradingBalance: 10000, // Configurable balance for paper trading mode
 
   // Opportunities
   opportunities: [],
@@ -55,6 +56,7 @@ export const useBotStore = create((set, get) => ({
   setLastHeartbeat: (timestamp) => set({ lastHeartbeat: timestamp }),
 
   setMode: (mode) => set({ mode }),
+  setPaperTradingBalance: (balance) => set({ paperTradingBalance: balance }),
 
   // Update opportunities (merge with existing to prevent flicker)
   updateOpportunities: (newOpps) => {

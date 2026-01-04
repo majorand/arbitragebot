@@ -1,7 +1,12 @@
 import { Save, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+import useBotStore from '../store/botStore';
 
 export default function ConfigPanel({ config = {}, onSave }) {
+  const mode = useBotStore((state) => state.mode);
+  const paperTradingBalance = useBotStore((state) => state.paperTradingBalance);
+  const cashBalance = useBotStore((state) => state.metrics.cash_balance);
+  
   const [formData, setFormData] = useState({
     maxExposure: config.maxExposure || 5000,
     maxStakePerTrade: config.maxStakePerTrade || 500,
@@ -9,6 +14,7 @@ export default function ConfigPanel({ config = {}, onSave }) {
     minLiquidity: config.minLiquidity || 1000,
     venues: config.venues || ['kalshi', 'draftkings', 'espn'],
     sports: config.sports || ['nfl', 'nba', 'mlb'],
+    paperTradingBalance: paperTradingBalance,
     ...config,
   });
 
@@ -18,6 +24,9 @@ export default function ConfigPanel({ config = {}, onSave }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (mode === 'paper' && formData.paperTradingBalance !== paperTradingBalance) {
+      useBotStore.setState({ paperTradingBalance: formData.paperTradingBalance });
+    }
     onSave(formData);
   };
 
@@ -26,6 +35,34 @@ export default function ConfigPanel({ config = {}, onSave }) {
       <h2 className="text-xl font-bold text-white mb-6">Strategy Configuration</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Trading Balance (Paper Mode Only) */}
+        {mode === 'paper' && (
+          <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-blue-300 uppercase mb-4">Paper Trading Balance</h3>
+            <div>
+              <label className="text-sm text-gray-400">Available Cash ($)</label>
+              <input
+                type="number"
+                value={formData.paperTradingBalance}
+                onChange={(e) => handleChange('paperTradingBalance', parseFloat(e.target.value))}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white mt-1"
+                min="0"
+                step="100"
+              />
+              <p className="text-xs text-gray-500 mt-2">Set your starting balance for paper trading</p>
+            </div>
+          </div>
+        )}
+
+        {/* Current Balance Display (Live Mode) */}
+        {mode === 'live' && (
+          <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-green-300 uppercase mb-2">Live Trading Balance</h3>
+            <p className="text-2xl font-bold text-green-400">${cashBalance.toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-2">Connected to live account - balance updates in real-time</p>
+          </div>
+        )}
+
         {/* Risk Controls */}
         <div>
           <h3 className="text-sm font-semibold text-gray-300 uppercase mb-4">Risk Controls</h3>

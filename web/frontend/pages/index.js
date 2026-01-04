@@ -25,6 +25,10 @@ export default function Dashboard() {
   const health = useBotStore((state) => state.health);
   const connectionState = useBotStore((state) => state.connectionState);
   const connectionError = useBotStore((state) => state.lastConnectionError);
+  const paperTradingBalance = useBotStore((state) => state.paperTradingBalance);
+
+  // Use paper balance if in paper mode, otherwise use live balance
+  const displayBalance = mode === 'paper' ? paperTradingBalance : metrics.cash_balance;
 
   // Initialize real-time data connection
   useRealTimeData();
@@ -48,7 +52,7 @@ export default function Dashboard() {
 
   const handleTrade = async (opportunity) => {
     const stake = window.prompt(
-      `Enter stake amount (Max $${Math.floor(metrics.cash_balance || 1000)}):`,
+      `Enter stake amount (Max $${Math.floor(displayBalance || 1000)}):`,
       '100'
     );
     if (!stake) return;
@@ -219,10 +223,16 @@ export default function Dashboard() {
                   {(metrics.win_rate * 100).toFixed(1)}%
                 </p>
               </div>
-              <div className="p-4 bg-gray-800/30 rounded">
-                <p className="text-gray-400 text-sm">Cash Balance</p>
+              <div className={`p-4 rounded ${
+                mode === 'paper' 
+                  ? 'bg-blue-500/10 border border-blue-500/30' 
+                  : 'bg-green-500/10 border border-green-500/30'
+              }`}>
+                <p className="text-gray-400 text-sm">
+                  {mode === 'paper' ? 'Paper' : 'Live'} Balance
+                </p>
                 <p className="text-2xl font-bold text-amber-400">
-                  ${metrics.cash_balance.toFixed(2)}
+                  ${displayBalance.toFixed(2)}
                 </p>
               </div>
               <div className="p-4 bg-gray-800/30 rounded">
