@@ -213,55 +213,48 @@ def _generate_mock_opportunities() -> List[NormalizedOdds]:
     
     mock_data = [
         NormalizedOdds(
-            sport="nba",
+            sport="basketball",
             league="nba",
             event_id="MOCK-NBA-001",
             start_time=now + timedelta(hours=2),
-            home_team="Lakers",
-            away_team="Celtics",
+            home_team="Los Angeles Lakers",
+            away_team="Boston Celtics",
             market_type="moneyline",
-            selection="Lakers Win",
-            price=0.55,
-            implied_probability=0.55,
+            selection="home",
+            price=1.85,
+            american_odds=-130,
+            implied_probability=0.54,
             source="kalshi",
             last_updated=now,
         ),
         NormalizedOdds(
-            sport="nfl",
+            sport="football",
             league="nfl",
             event_id="MOCK-NFL-002",
             start_time=now + timedelta(hours=4),
-            home_team="Chiefs",
-            away_team="Bills",
+            home_team="Kansas City Chiefs",
+            away_team="Buffalo Bills",
             market_type="moneyline",
-            selection="Chiefs Win",
-            price=0.48,
-            implied_probability=0.48,
-            source="kalshi",
-            last_updated=now,
-        ),
-        NormalizedOdds(
-            sport="nhl",
-            league="nhl",
-            event_id="MOCK-NHL-003",
-            start_time=now + timedelta(hours=6),
-            home_team="Bruins",
-            away_team="Rangers",
-            market_type="moneyline",
-            selection="Over 5.5 Goals",
-            price=0.52,
-            implied_probability=0.52,
+            selection="home",
+            price=2.04,
+            american_odds=-105,
+            implied_probability=0.49,
             source="kalshi",
             last_updated=now,
         ),
     ]
     
-    # Add edge metadata for display
+    # Add mock arbitrage metadata by attaching attributes
     for idx, opp in enumerate(mock_data):
-        opp.edge = 2.5 + (idx * 0.5)  # 2.5%, 3.0%, 3.5%
+        opp.edge = 1.5 + (idx * 0.3)  # 1.5%, 1.8%
         opp.vs_source = "draftkings"
-        opp.vs_price = opp.price - 0.03
+        opp.vs_price = opp.price - 0.05  # Slightly worse odds on DraftKings
+        opp.vs_selection = opp.selection
+        opp.recommended_stake_kalshi = 100.0 * (idx + 1)
+        opp.recommended_stake_other = 95.0 * (idx + 1)
+        opp.vs_american_odds = -115 if idx == 0 else -110
     
+    LOGGER.info(f"Generated {len(mock_data)} mock arbitrage opportunities for testing")
     return mock_data
 
 
