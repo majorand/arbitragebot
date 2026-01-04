@@ -1,0 +1,193 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    ARBITRAGE BOT DASHBOARD - VISUAL LAYOUT                      ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                                   HEADER                                        │
+│  🤖 Arbitrage Bot           Total Trades: 42    Balance: $1,250    Positions: 3 │
+│  Sports Betting Edge Finder  ✓ Healthy         [📄 PAPER] [🔴 LIVE] [⚡]       │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                          BEST OPPORTUNITY CARD                                  │
+│  ▲ Best Opportunity      Edge: 3.2%  EV: $32.00                               │
+│                                                                                 │
+│  Market: NFL Playoff  │ Event: Chiefs vs Ravens  │ Venues: Kalshi, DraftKings │
+│  Implied Prob: 52%    │ Implied Prob: 55%        │ Liquidity: $8,500          │
+│                                                                                 │
+│  💡 Recommendation: Buy YES on Kalshi at 0.52                                  │
+│  Confidence: 87% | Historical Success Rate: 91% in similar situations         │
+│                                                                                 │
+│  [Execute Trade] [Skip] [Ignore]                                               │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+  [🎯 Opportunities] [💼 Positions & PnL] [🏥 Health] [⚙️ Config]
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                        OPPORTUNITIES TAB (ACTIVE)                               │
+│                                                                                 │
+│  Filters: Min Edge: 2.0% ▼  |  Sort By: Highest Edge ▼                        │
+│                                                                                 │
+│  Event          │ Venues              │ Edge  │ Liquidity │ Status      │ Action
+│  ────────────────────────────────────────────────────────────────────────────
+│  Chiefs vs      │ Kalshi, DraftKings  │ 3.2% │ $8,500   │ ⚪ new     │ Trade
+│  Ravens         │                     │      │          │            │
+│  ────────────────────────────────────────────────────────────────────────────
+│  Lakers vs      │ Kalshi, FanDuel     │ 2.8% │ $12,000  │ 🟢 filled  │ Trade
+│  Celtics        │                     │      │          │            │
+│  ────────────────────────────────────────────────────────────────────────────
+│  Yankees vs     │ DraftKings, ESPN    │ 2.1% │ $5,500   │ 🟡 pending │ Trade
+│  Red Sox        │                     │      │          │            │
+│  ────────────────────────────────────────────────────────────────────────────
+│  49ers vs       │ Kalshi              │ 1.9% │ $3,200   │ 🔴 reject  │ Trade
+│  Cowboys        │                     │      │          │            │
+│  ────────────────────────────────────────────────────────────────────────────
+│                                                                                 │
+│  Showing 4 of 47 opportunities                                                 │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────┬──────────────────────────────────────────────┐
+│    POSITIONS TAB LAYOUT            │   HEALTH MONITOR TAB LAYOUT                 │
+│  ╔─────────────────────────────╗   │   ╔──────────────────────────────────────╗  │
+│  │ Realized PnL: +$342.50 🟢   │   │   │ Data Feeds          │ Latency       │  │
+│  │ Unrealized PnL: +$125.25    │   │   │ ─────────────────────────────────── │  │
+│  │ Open Positions: 3 📊        │   │   │ ✓ Kalshi API        │ 45ms          │  │
+│  │ Win Rate: 68%               │   │   │ ✓ ESPN Feed         │ 120ms         │  │
+│  │ ─────────────────────────── │   │   │ ✓ DraftKings API    │ 85ms          │  │
+│  │ 📈 Equity Curve (7 days)    │   │   │ ✓ Supabase DB       │ 25ms          │  │
+│  │                             │   │   │ ─────────────────────────────────── │  │
+│  │ 1800 ╱╲                     │   │   │ Recent Events:                      │  │
+│  │ 1500 ╱  ╲    ╱╲             │   │   │ 14:32 Fetched 245 markets          │  │
+│  │ 1200 ╱────╲╱──╲    ╱        │   │   │ 14:31 Placed order: $50 YES        │  │
+│  │      M T W T F S S          │   │   │ 14:30 Edge detected: 3.2%          │  │
+│  │ ─────────────────────────── │   │   │ 14:29 Simulated fill at $0.48      │  │
+│  │ Positions:                  │   │   └──────────────────────────────────────┘  │
+│  │ • YES Chiefs @ 0.52         │   │                                             │
+│  │ • NO Ravens @ 0.48          │   │   CONFIG TAB LAYOUT                        │
+│  │ • YES Lakers @ 0.61         │   │   ╔──────────────────────────────────────╗  │
+│  │                             │   │   │ Risk Controls:                       │  │
+│  │ → View full positions       │   │   │ Max Exposure: $5,000                │  │
+│  │ → View trade history        │   │   │ Max Stake/Trade: $500               │  │
+│  │ → Export data               │   │   │ Min Edge %: 2.5%                    │  │
+│  │                             │   │   │ Min Liquidity: $1,000               │  │
+│  │                             │   │   │ ───────────────────────────────────  │  │
+│  │                             │   │   │ Venues: ☑ Kalshi ☑ DraftKings    │  │
+│  │                             │   │   │         ☑ FanDuel ☐ ESPN          │  │
+│  │                             │   │   │ ───────────────────────────────────  │  │
+│  │                             │   │   │ Sports: ☑ NFL ☑ NBA  ☑ MLB ☑ NHL │  │
+│  │                             │   │   │ ───────────────────────────────────  │  │
+│  │                             │   │   │ [🔵 Conservative] [⚡ Aggressive]  │  │
+│  │                             │   │   │ [📄 Test] [💾 Save]                │  │
+│  │                             │   │   └──────────────────────────────────────┘  │
+│  └─────────────────────────────┘   └──────────────────────────────────────────┘
+└──────────────────────────────────┴──────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                         TRADE HISTORY (ALWAYS VISIBLE)                          │
+│                                                                                 │
+│  🟢 Chiefs vs Ravens (NFl Playoff) │ Kalshi │ $100 | +1.2% | 14:32:15 | FILLED
+│     Edge: 3.2% | Venue: Kalshi, DraftKings                                    │
+│                                                                                 │
+│  🟢 Lakers vs Celtics (NBA)        │ DK     │ $150 | -0.5% | 14:31:45 | FILLED
+│     Edge: 2.8% | Venue: Kalshi, FanDuel                                       │
+│                                                                                 │
+│  🟡 Yankees vs Red Sox (MLB)       │ NK     │ $75  | PENDING | 14:30:20        │
+│     Edge: 2.1% | Venue: DraftKings, ESPN                                      │
+│                                                                                 │
+│  🔴 49ers vs Cowboys (NFL)         │ NK     │ $50  | 0.0%   | 14:29:10 | REJECT
+│     Edge: 1.9% | Venue: Kalshi, DraftKings                                    │
+│                                                                                 │
+│  🟢 Nets vs Knicks (NBA)           │ DF     │ $200 | +2.3% | 14:28:35 | FILLED
+│     Edge: 3.5% | Venue: FanDuel, ESPN                                         │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ 🚀 Arbitrage Bot • Mode: PAPER • Last updated: 14:32:45 • Connected: ✓       │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+
+INTERACTIVE ELEMENTS
+═══════════════════
+
+Header Elements:
+  [📄 PAPER] - Blue button, click to simulate trades
+  [🔴 LIVE]  - Red button, requires confirmation to execute real trades
+  [⚡]       - Kill switch, instantly cancels all open orders
+  🟢         - Health indicator (green = all systems operational)
+
+Card Actions:
+  [Execute Trade] - Places the trade in current mode
+  [Skip]         - Move to next opportunity
+  [Ignore]       - Don't show this market again
+
+Tab Navigation:
+  Click any tab to switch views:
+  - 🎯 Opportunities (default)
+  - 💼 Positions & PnL
+  - 🏥 Health Monitor
+  - ⚙️ Configuration
+
+Table Interactions:
+  - Sort: Click column headers to sort
+  - Filter: Use min edge/liquidity inputs
+  - Trade: Click "Trade" button on any row
+  - Expand: (future) Click row to see details
+
+
+REAL-TIME UPDATES
+═════════════════
+
+The dashboard auto-refreshes every 5 seconds:
+  ✓ Opportunities list updates with new edges
+  ✓ Positions view shows live P&L changes
+  ✓ Trade history adds new executions
+  ✓ Health monitor updates feed status
+  ✓ Equity curve animates in real-time
+
+WebSocket updates (instant):
+  ✓ Trade fills appear immediately
+  ✓ Position changes update instantly
+  ✓ New high-edge opportunities pop up
+  ✓ Error alerts push to dashboard
+  ✓ Market data changes reflect live
+
+
+DARK MODE THEME
+═══════════════
+
+Professional Colors:
+  🔵 Primary Blue: #3b82f6 (actions, paper mode)
+  🔴 Danger Red: #dc2626 (live mode, errors)
+  🟢 Success Green: #10b981 (profit, healthy)
+  🟡 Warning Amber: #f59e0b (pending, caution)
+  ⚫ Dark Background: #0f172a (eye strain reduction)
+
+Visual Hierarchy:
+  • Cards have subtle glow effects
+  • Active buttons are bold and bright
+  • Status indicators are instantly recognizable
+  • Charts use contrasting colors
+  • Text is optimized for readability
+
+
+RESPONSIVE DESIGN
+═════════════════
+
+Desktop (1024px+):
+  • 3-4 columns for opportunities
+  • Full charts visible
+  • All controls in header
+
+Tablet (768px-1023px):
+  • 2 columns for opportunities
+  • Stacked charts
+  • Collapsible navigation
+
+Mobile (< 768px):
+  • 1 column layout
+  • Vertical scrolling
+  • Floating action buttons
+  • Touch-optimized buttons
+
+
+END OF DASHBOARD LAYOUT

@@ -1,12 +1,23 @@
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
-async function request(path, options) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
+const defaultHeaders = {
+  'Content-Type': 'application/json',
+};
+
+async function request(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: defaultHeaders,
+    ...options,
+  });
+  
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    const error = await response.text();
+    throw new Error(`API Error: ${response.status} - ${error}`);
   }
-  return response.json();
+  
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
 }
 
 export function fetchOdds() {
@@ -20,16 +31,14 @@ export function fetchMode() {
 export function updateMode(mode) {
   return request("/mode", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode })
   });
 }
 
-export function submitTrade(eventId, stake) {
-  return request("/trade", {
+export function submitTrade(tradeData) {
+  return request("/trades", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event_id: eventId, stake })
+    body: JSON.stringify(tradeData)
   });
 }
 
@@ -44,3 +53,44 @@ export function fetchPositions() {
 export function fetchMetrics() {
   return request("/metrics");
 }
+
+// WebSocket Connection Helper
+export function createWebSocketConnection(handlers = {}) {
+  const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
+  const wsHost = API_BASE_URL.replace(/https?:\/\//, '');
+  const wsUrl = `${wsProtocol}://${wsHost}/ws`;
+  
+  try {
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      if (handlers.onConnect) handlers.onConnect();
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (handlers.onMessage) handlers.onMessage(data);
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+      if (handlers.onError) handlers.onError(err);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      if (handlers.onClose) handlers.onClose();
+    };
+
+    return ws;
+  } catch (err) {
+    console.error('Failed to create WebSocket:', err);
+    return null;
+  }
+}
+

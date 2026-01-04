@@ -1,0 +1,247 @@
+🚀 GETTING STARTED - THE SIMPLEST WAY
+======================================
+
+Pick ONE option below and follow it:
+
+═════════════════════════════════════════════════════════════════════════════
+
+OPTION 1: WINDOWS (EASIEST)
+═════════════════════════════
+
+1. Edit this file with your credentials:
+   → web/backend/backend.env
+   
+   Add these 5 lines:
+   ┌─────────────────────────────────────────────┐
+   │ SUPABASE_URL=your_url                       │
+   │ SUPABASE_KEY=your_key                       │
+   │ KALSHI_API=https://api.kalshi.com           │
+   │ KALSHI_API_KEY=your_key                     │
+   │ TRADING_MODE=paper                          │
+   └─────────────────────────────────────────────┘
+
+2. Double-click this file:
+   → start.bat
+   
+   (Both backend and frontend will start automatically)
+
+3. Wait for browser to open at:
+   → http://localhost:3000
+   
+   Done! 🎉
+
+═════════════════════════════════════════════════════════════════════════════
+
+OPTION 2: MAC/LINUX (MANUAL)
+═════════════════════════════
+
+1. Edit credentials:
+   $ nano web/backend/backend.env
+   
+   Add:
+   SUPABASE_URL=your_url
+   SUPABASE_KEY=your_key
+   KALSHI_API=https://api.kalshi.com
+   KALSHI_API_KEY=your_key
+   TRADING_MODE=paper
+
+2. Open Terminal 1:
+   $ cd path/to/arbitragebot
+   $ uvicorn app:app --reload --port 8000
+   
+   Wait for: "Application startup complete"
+
+3. Open Terminal 2:
+   $ cd path/to/arbitragebot/web/frontend
+   $ npm run dev
+   
+   Wait for: "ready - started server on"
+
+4. Open browser:
+   → http://localhost:3000
+   
+   Done! 🎉
+
+═════════════════════════════════════════════════════════════════════════════
+
+OPTION 3: DOCKER (ADVANCED)
+════════════════════════════
+
+1. Edit credentials:
+   → web/backend/backend.env
+
+2. Run:
+   $ docker build -t arbitrage-bot .
+   $ docker run -p 8000:8000 -p 3000:3000 \
+     --env-file web/backend/backend.env arbitrage-bot
+
+3. Open browser:
+   → http://localhost:3000
+   
+   Done! 🎉
+
+═════════════════════════════════════════════════════════════════════════════
+
+GETTING CREDENTIALS
+═══════════════════
+
+Supabase:
+  1. Go to: https://app.supabase.com
+  2. Click your project
+  3. Settings → API → Copy ANON KEY and PROJECT URL
+  4. SUPABASE_URL = Project URL
+  5. SUPABASE_KEY = Anon Key
+
+Kalshi:
+  1. Go to: https://kalshi.com/developers
+  2. Create API key
+  3. KALSHI_API_KEY = Your API key
+  4. KALSHI_API = https://api.kalshi.com
+
+═════════════════════════════════════════════════════════════════════════════
+
+WHAT YOU'LL SEE
+═══════════════
+
+At http://localhost:3000 you'll see:
+
+  Header:
+    • Mode: [📄 PAPER] [🔴 LIVE] [⚡]
+    • Stats: Total Trades, Balance, Positions
+    • Health: Green checkmark = all systems ready
+
+  Best Opportunity Card:
+    • Top-ranked arbitrage
+    • Edge %, EV $, recommendation
+    • [Execute Trade] [Skip] [Ignore] buttons
+
+  Four Tabs:
+    • 🎯 Opportunities - All available trades
+    • 💼 Positions - Your portfolio
+    • 🏥 Health - System status
+    • ⚙️ Config - Settings
+
+  Trade History (bottom):
+    • All your trades with P&L
+
+═════════════════════════════════════════════════════════════════════════════
+
+FIRST STEPS IN DASHBOARD
+═════════════════════════
+
+1. Verify Mode: Should show [📄 PAPER] (blue button)
+
+2. Check Health: Tab → 🏥 Health
+   Should see green checkmarks next to:
+   ✓ Kalshi API
+   ✓ ESPN Feed
+   ✓ DraftKings API
+   ✓ Supabase DB
+
+3. View Opportunities: Tab → 🎯 Opportunities
+   Should see a list of available trades
+
+4. Execute Test Trade:
+   Click "Execute Trade" on any opportunity
+   Enter amount (e.g., "100")
+   Click confirm
+
+5. Monitor: Check Trade History at bottom
+
+═════════════════════════════════════════════════════════════════════════════
+
+COLORS & MEANINGS
+═════════════════
+
+🔵 Blue = Paper mode (simulated, safe)
+🔴 Red  = Live mode (real money)
+🟢 Green = Profit or healthy status
+🟡 Amber = Warning or pending
+⚫ Gray = Neutral, secondary
+
+═════════════════════════════════════════════════════════════════════════════
+
+COMMON ISSUES
+═════════════
+
+Q: Says "Failed to load data"
+A: Backend might not be running. Make sure:
+   • Terminal showing "Application startup complete"
+   • Port 8000 is free
+   • No error messages in terminal
+
+Q: Dashboard is blank
+A: Frontend might not have built correctly.
+   • Clear cache: Ctrl+Shift+Del
+   • Run: npm run build && npm start
+   • Check Node version: node --version (need 18+)
+
+Q: Can't find Opportunities
+A: Waiting for data from API. Just wait 10 seconds.
+   Or check 🏥 Health tab to verify feeds are connected.
+
+Q: WebSocket error in console
+A: Restart both backend and frontend.
+
+═════════════════════════════════════════════════════════════════════════════
+
+PAPER VS LIVE MODE
+══════════════════
+
+PAPER MODE ([📄 PAPER] - Blue):
+  • Simulates trades
+  • No real money spent
+  • Perfect for testing
+  • Click button to trade
+
+LIVE MODE ([🔴 LIVE] - Red):
+  • Real money traded
+  • Real orders on Kalshi
+  • Requires confirmation
+  • ONLY AFTER TESTING!
+
+To switch:
+  1. Click [🔴 LIVE] button
+  2. Read warning dialog carefully
+  3. Click "Confirm"
+  4. Now trading real money!
+
+To switch back:
+  1. Click [📄 PAPER] button
+  2. Click "Confirm"
+  3. Back to simulated trading
+
+═════════════════════════════════════════════════════════════════════════════
+
+WHERE TO GET HELP
+═════════════════
+
+Docs to read:
+  • QUICKSTART.md - Quick setup guide
+  • DEPLOYMENT.md - Full deployment guide
+  • FILE_INDEX.txt - File structure reference
+  • web/frontend/README.md - UI component docs
+
+API Documentation:
+  • http://localhost:8000/docs - Interactive API docs
+  • http://localhost:8000/redoc - Alternative API docs
+
+External Resources:
+  • Kalshi API: https://kalshi.com/developers
+  • Supabase: https://supabase.com/docs
+  • Next.js: https://nextjs.org/docs
+
+═════════════════════════════════════════════════════════════════════════════
+
+THAT'S IT!
+══════════
+
+Your bot is fully built and ready.
+
+Just:
+1. Add credentials to backend.env
+2. Run start script (or manual commands)
+3. Open http://localhost:3000
+4. Start trading! 🚀
+
+═════════════════════════════════════════════════════════════════════════════

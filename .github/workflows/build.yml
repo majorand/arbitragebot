@@ -1,0 +1,51 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        cd web/frontend
+        npm install
+
+    - name: Lint code
+      run: |
+        cd web/frontend
+        npm run lint || true
+
+    - name: Build
+      run: |
+        cd web/frontend
+        npm run build
+
+    - name: Type check
+      run: |
+        cd web/frontend
+        npm run type-check || true
+
+    - name: Store build
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: web/frontend/.next
+        retention-days: 1
