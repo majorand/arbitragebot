@@ -1,0 +1,7 @@
+{
+  "name": "arbitrage-bot-backend",
+  "version": "1.0.0",
+  "description": "Backend for arbitrage bot",
+  "main": "app.py",
+  "dependencies": {}
+}

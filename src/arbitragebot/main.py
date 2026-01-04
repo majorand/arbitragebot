@@ -8,9 +8,9 @@ from typing import List
 from arbitragebot.config import StrategyConfig, TradingConfig, load_yaml
 from arbitragebot.data_sources.draftkings import DraftKingsDataSource
 from arbitragebot.data_sources.espn import ESPNDataSource
-from arbitragebot.data_sources.polymarket import PolymarketDataSource
+from arbitragebot.data_sources.kalshi import KalshiDataSource
 from arbitragebot.execution.paper import PaperTradingEngine
-from arbitragebot.exchanges.polymarket import PolymarketTradingClient
+from arbitragebot.exchanges.kalshi import KalshiTradingClient
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.strategies.arbitrage import CrossMarketArbitrageStrategy
 
@@ -19,15 +19,15 @@ LOGGER = logging.getLogger(__name__)
 
 
 def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
-    polymarket_cfg = sources_config.get("polymarket", {})
+    kalshi_cfg = sources_config.get("kalshi", {})
     espn_cfg = sources_config.get("espn", {})
     draftkings_cfg = sources_config.get("draftkings", {})
 
-    polymarket = PolymarketDataSource(
-        base_url=polymarket_cfg.get(
-            "base_url", os.getenv("POLYMARKET_API", "https://clob.polymarket.com")
+    kalshi = KalshiDataSource(
+        base_url=kalshi_cfg.get(
+            "base_url", os.getenv("KALSHI_API", "https://api.kalshi.com")
         ),
-        api_key=os.getenv("POLYMARKET_API_KEY"),
+        api_key=os.getenv("KALSHI_API_KEY"),
     )
     espn = ESPNDataSource(
         base_url=espn_cfg.get("base_url", "https://site.api.espn.com/apis/site/v2")
@@ -40,9 +40,9 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
 
     data: List[NormalizedOdds] = []
     try:
-        data.extend(polymarket.normalize_markets(polymarket.fetch_markets()))
+        data.extend(kalshi.normalize_markets(kalshi.fetch_markets()))
     except Exception as exc:  # noqa: BLE001 - log and continue
-        LOGGER.warning("Failed to fetch Polymarket markets: %s", exc)
+        LOGGER.warning("Failed to fetch Kalshi markets: %s", exc)
 
     try:
         events = espn.fetch_events("basketball", "nba")
@@ -90,9 +90,9 @@ def run_once() -> None:
             paper.submit_order(order, reference_price=order.price)
         LOGGER.info("Paper mode completed with %s orders", len(orders))
     else:
-        client = PolymarketTradingClient(
-            base_url=os.getenv("POLYMARKET_API", "https://clob.polymarket.com"),
-            api_key=os.getenv("POLYMARKET_API_KEY"),
+        client = KalshiTradingClient(
+            base_url=os.getenv("KALSHI_API", "https://api.kalshi.com"),
+            api_key=os.getenv("KALSHI_API_KEY"),
         )
         for order in orders:
             result = client.place_order(order)

@@ -1,6 +1,6 @@
 sources:
-  polymarket:
-    base_url: "https://clob.polymarket.com"
+  kalshi:
+    base_url: "https://api.kalshi.com"
     rate_limit_per_minute: 60
   espn:
     base_url: "https://site.api.espn.com/apis/site/v2"

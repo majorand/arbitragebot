@@ -11,7 +11,7 @@ from arbitragebot.utils.time import parse_iso_datetime
 LOGGER = logging.getLogger(__name__)
 
 
-class PolymarketDataSource:
+class KalshiDataSource:
     def __init__(self, base_url: str, api_key: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -20,7 +20,7 @@ class PolymarketDataSource:
     def fetch_markets(self) -> List[dict]:
         url = f"{self.base_url}/markets"
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else None
-        LOGGER.debug("Fetching Polymarket markets from %s", url)
+        LOGGER.debug("Fetching Kalshi markets from %s", url)
         return request_json(self.session, "GET", url, headers=headers)
 
     def normalize_markets(self, raw_markets: Iterable[dict]) -> List[NormalizedOdds]:
@@ -43,7 +43,7 @@ class PolymarketDataSource:
                         selection=outcome.get("name", "unknown"),
                         price=price,
                         implied_probability=implied,
-                        source="polymarket",
+                        source="kalshi",
                         last_updated=now,
                     )
                 )

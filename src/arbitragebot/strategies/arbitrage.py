@@ -21,15 +21,15 @@ class CrossMarketArbitrageStrategy(Strategy):
 
         orders: List[OrderRequest] = []
         for event_id, entries in grouped.items():
-            polymarket_entries = [e for e in entries if e.source == "polymarket"]
-            sportsbook_entries = [e for e in entries if e.source != "polymarket"]
-            if not polymarket_entries or not sportsbook_entries:
+            kalshi_entries = [e for e in entries if e.source == "kalshi"]
+            sportsbook_entries = [e for e in entries if e.source != "kalshi"]
+            if not kalshi_entries or not sportsbook_entries:
                 continue
-            best_polymarket = max(polymarket_entries, key=lambda e: e.implied_probability)
+            best_kalshi = max(kalshi_entries, key=lambda e: e.implied_probability)
             best_sportsbook = min(sportsbook_entries, key=lambda e: e.implied_probability)
             edge_pct = (
                 best_sportsbook.implied_probability
-                - best_polymarket.implied_probability
+                - best_kalshi.implied_probability
             ) * 100
             if edge_pct < self.config.min_edge_pct:
                 continue
@@ -44,9 +44,9 @@ class CrossMarketArbitrageStrategy(Strategy):
                 continue
             orders.append(
                 OrderRequest(
-                    market_id=best_polymarket.event_id,
+                    market_id=best_kalshi.event_id,
                     side="buy",
-                    price=best_polymarket.price,
+                    price=best_kalshi.price,
                     size=stake,
                     order_type="limit",
                 )
