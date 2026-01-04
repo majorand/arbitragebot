@@ -21,8 +21,21 @@ try:
 except ImportError:
     HAS_ARBITRAGEBOT = False
     class NormalizedOdds:
-        pass
-    def collect_market_data(sources): return []
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class TradingConfig:
+        def __init__(self, mode: str = "paper", max_order_size: int = 100):
+            self.mode = mode
+            self.max_order_size = max_order_size
+
+    class PaperTradingEngine:
+        def __init__(self):
+            self.cash_balance = 0.0
+
+    def collect_market_data(sources):
+        return []
 
 try:
     from arbitragebot.storage.supabase import (
