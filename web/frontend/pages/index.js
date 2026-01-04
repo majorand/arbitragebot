@@ -204,7 +204,7 @@ export default function Dashboard() {
 
               {activeTab === 'history' && <TradeHistory trades={trades} />}
 
-              {activeTab === 'health' && <HealthMonitor health={health} />}
+              {activeTab === 'health' && <HealthMonitor />}
 
               {activeTab === 'config' && (
                 <ConfigPanel onSave={() => setError('')} />

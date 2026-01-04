@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections import deque
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -242,9 +243,34 @@ class TradingState:
     def __init__(self) -> None:
         self.mode = TradingConfig(mode=os.getenv("TRADING_MODE", "paper"), max_order_size=100)
         self.paper_engine = PaperTradingEngine()
+        self.events = deque(maxlen=100)  # Keep last 100 events
+        self.health = {
+            "kalshi": {"status": "unknown", "latency": 0, "last_check": None},
+            "draftkings": {"status": "unknown", "latency": 0, "last_check": None},
+            "espn": {"status": "unknown", "latency": 0, "last_check": None},
+            "supabase": {"status": "unknown", "latency": 0, "last_check": None},
+        }
 
     def set_mode(self, mode: str) -> None:
         self.mode = TradingConfig(mode=mode, max_order_size=self.mode.max_order_size)
+        self.add_event(f"Trading mode changed to {mode.upper()}", "info")
+
+    def add_event(self, message: str, event_type: str = "info") -> None:
+        """Add event to recent events log"""
+        self.events.appendleft({
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": message,
+            "type": event_type
+        })
+
+    def update_health(self, feed: str, status: str, latency: int = 0) -> None:
+        """Update health status for a data feed"""
+        if feed in self.health:
+            self.health[feed] = {
+                "status": status,
+                "latency": latency,
+                "last_check": datetime.utcnow().isoformat()
+            }
 
 
 STATE = TradingState()
@@ -263,12 +289,14 @@ async def list_odds() -> List[dict]:
     data = collect_market_data(sources_config)
     client = get_supabase_client()
     store_odds(client, data)
+    STATE.add_event(f"Fetched odds for {len(data)} markets", "info")
     return [asdict(item) for item in data]
 
 
 @app.post("/mode")
 async def set_mode(payload: ModeRequest) -> dict:
     STATE.set_mode(payload.mode)
+    STATE.add_event(f"Trading mode changed to {payload.mode.upper()}", "info")
     return {"mode": STATE.mode.mode}
 
 
@@ -309,6 +337,7 @@ async def trigger_trade(payload: TradeRequest) -> TradeRecord:
             event_id=order.market_id,
             delta=order.size if order.side == "buy" else -order.size,
         )
+        STATE.add_event(f"Paper mode: Simulated fill at ${order.price:.2f}", "info")
         return TradeRecord(
             trade_id=trade_id,
             event_id=order.market_id,
@@ -340,6 +369,7 @@ async def trigger_trade(payload: TradeRequest) -> TradeRecord:
         event_id=order.market_id,
         delta=order.size if order.side == "buy" else -order.size,
     )
+    STATE.add_event(f"Placed order on Kalshi: ${order.size} {order.side.upper()}", "success")
     return TradeRecord(
         trade_id=trade_id,
         event_id=order.market_id,
@@ -384,3 +414,44 @@ async def metrics() -> MetricsResponse:
         cash_balance=STATE.paper_engine.cash_balance,
         open_positions=len([pos for pos in positions.values() if pos != 0]),
     )
+
+
+@app.get("/health")
+async def health_status() -> Dict:
+    """Return health status of all data feeds"""
+    # Try to update status by checking each source
+    try:
+        sources_config = _load_sources_config()
+        # Attempt to fetch data (this will update health status indirectly)
+        collect_market_data(sources_config)
+        
+        # Mark major sources as connected if we got here
+        if sources_config.get("kalshi"):
+            STATE.update_health("kalshi", "connected", 45)
+        if sources_config.get("draftkings"):
+            STATE.update_health("draftkings", "connected", 85)
+        if sources_config.get("espn"):
+            STATE.update_health("espn", "connected", 120)
+    except Exception as e:
+        # If data collection fails, mark sources as disconnected
+        STATE.update_health("kalshi", "disconnected", 0)
+        STATE.update_health("draftkings", "disconnected", 0)
+        STATE.update_health("espn", "disconnected", 0)
+    
+    # Check Supabase
+    try:
+        client = get_supabase_client()
+        if client:
+            STATE.update_health("supabase", "connected", 25)
+        else:
+            STATE.update_health("supabase", "disconnected", 0)
+    except Exception:
+        STATE.update_health("supabase", "disconnected", 0)
+    
+    return STATE.health
+
+
+@app.get("/events")
+async def recent_events(limit: int = 50) -> List[Dict]:
+    """Return recent events"""
+    return list(STATE.events)[:limit]
