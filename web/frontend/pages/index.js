@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import Header from '../components/Header';
 import BestOpportunity from '../components/BestOpportunity';
 import OpportunitiesTable from '../components/OpportunitiesTable';
@@ -6,87 +6,31 @@ import PositionsView from '../components/PositionsView';
 import TradeHistory from '../components/TradeHistory';
 import HealthMonitor from '../components/HealthMonitor';
 import ConfigPanel from '../components/ConfigPanel';
-import {
-  API_BASE_URL,
-  fetchMode,
-  fetchOdds,
-  fetchPositions,
-  fetchTrades,
-  fetchMetrics,
-  updateMode,
-  submitTrade,
-} from '../lib/api';
-import { AlertCircle } from 'lucide-react';
-
-const REFRESH_INTERVAL = 5000; // 5 seconds
+import useBotStore from '../store/botStore';
+import useRealTimeData from '../hooks/useRealTimeData';
+import { updateMode, submitTrade } from '../lib/api';
+import { AlertCircle, WifiOff } from 'lucide-react';
 
 export default function Dashboard() {
-  const [mode, setMode] = useState('paper');
-  const [opportunities, setOpportunities] = useState([]);
-  const [bestOpportunity, setBestOpportunity] = useState(null);
-  const [positions, setPositions] = useState([]);
-  const [trades, setTrades] = useState([]);
-  const [metrics, setMetrics] = useState({
-    total_trades: 0,
-    cash_balance: 0,
-    open_positions: 0,
-  });
+  const [activeTab, setActiveTab] = useState('opportunities');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [isHealthy, setIsHealthy] = useState(true);
-  const [activeTab, setActiveTab] = useState('opportunities'); // opportunities, positions, health, config
 
-  // Mock best opportunity (in production, this comes from backend)
-  const generateBestOpportunity = useCallback((odds) => {
-    if (!odds || odds.length === 0) return null;
-    const best = odds.reduce((prev, curr) => 
-      (curr.edge || 0) > (prev.edge || 0) ? curr : prev
-    );
-    return best.edge > 0 ? best : null;
-  }, []);
+  // Subscribe to store updates (auto-rerender on changes)
+  const mode = useBotStore((state) => state.mode);
+  const opportunities = useBotStore((state) => state.opportunities);
+  const bestOpportunity = useBotStore((state) => state.bestOpportunity);
+  const positions = useBotStore((state) => state.positions);
+  const trades = useBotStore((state) => state.trades);
+  const metrics = useBotStore((state) => state.metrics);
+  const health = useBotStore((state) => state.health);
+  const connectionState = useBotStore((state) => state.connectionState);
+  const connectionError = useBotStore((state) => state.lastConnectionError);
 
-  const loadDashboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [modeRes, oddsRes, tradesRes, positionsRes, metricsRes] = await Promise.all([
-        fetchMode().catch(() => ({ mode: 'paper' })),
-        fetchOdds().catch(() => []),
-        fetchTrades().catch(() => []),
-        fetchPositions().catch(() => []),
-        fetchMetrics().catch(() => ({})),
-      ]);
-
-      setMode(modeRes.mode || 'paper');
-      setOpportunities(Array.isArray(oddsRes) ? oddsRes : []);
-      setTrades(Array.isArray(tradesRes) ? tradesRes : []);
-      setPositions(Array.isArray(positionsRes) ? positionsRes : []);
-      setMetrics(metricsRes || {});
-      setBestOpportunity(generateBestOpportunity(oddsRes));
-      setError('');
-      setIsHealthy(true);
-    } catch (err) {
-      console.error('Dashboard load error:', err);
-      setError('Failed to load dashboard data');
-      setIsHealthy(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [generateBestOpportunity]);
-
-  // Initial load
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
-
-  // Auto-refresh
-  useEffect(() => {
-    const interval = setInterval(loadDashboard, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
-  }, [loadDashboard]);
+  // Initialize real-time data connection
+  useRealTimeData();
 
   const handleModeChange = async (newMode) => {
     if (newMode === 'live') {
-      // Confirmation dialog for live mode
       const confirmed = window.confirm(
         '⚠️ WARNING: Switching to LIVE mode will execute real trades!\n\nContinue?'
       );
@@ -95,7 +39,7 @@ export default function Dashboard() {
 
     try {
       await updateMode(newMode);
-      setMode(newMode);
+      useBotStore.setState({ mode: newMode });
       setError('');
     } catch (err) {
       setError(`Failed to change mode: ${err.message}`);
@@ -103,7 +47,10 @@ export default function Dashboard() {
   };
 
   const handleTrade = async (opportunity) => {
-    const stake = window.prompt(`Enter stake amount (Max $${metrics.cash_balance || 1000}):`, '100');
+    const stake = window.prompt(
+      `Enter stake amount (Max $${Math.floor(metrics.cash_balance || 1000)}):`,
+      '100'
+    );
     if (!stake) return;
 
     try {
@@ -111,78 +58,120 @@ export default function Dashboard() {
         market_id: opportunity.market_id,
         side: opportunity.recommended_side || 'yes',
         stake: parseFloat(stake),
-        exchange: 'kalshi',
+        exchange: opportunity.venue || 'kalshi',
       });
       setError('');
-      loadDashboard();
+      // Store will update via real-time connection
     } catch (err) {
       setError(`Trade failed: ${err.message}`);
     }
   };
 
-  const handleExecuteBestOpportunity = async () => {
-    if (bestOpportunity) {
-      handleTrade(bestOpportunity);
-    }
-  };
-
-  const handleSkipOpportunity = () => {
-    setOpportunities(opp => opp.filter(o => o !== bestOpportunity));
-    const remaining = opportunities.filter(o => o !== bestOpportunity);
-    setBestOpportunity(generateBestOpportunity(remaining));
-  };
-
-  const handleIgnoreOpportunity = () => {
-    handleSkipOpportunity();
-  };
-
   return (
-    <div className="min-h-screen bg-gray-950">
-      {/* Header */}
-      <Header 
-        mode={mode} 
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* Connection Status Badge */}
+      <div className="fixed top-4 right-4 z-50">
+        <div
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            connectionState === 'connected'
+              ? 'bg-green-500/20 border border-green-500/50 text-green-300'
+              : connectionState === 'connecting'
+              ? 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-300'
+              : connectionState === 'reconnecting'
+              ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300'
+              : 'bg-red-500/20 border border-red-500/50 text-red-300'
+          }`}
+        >
+          {connectionState === 'connected' ? (
+            <>
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              Live Connected
+            </>
+          ) : connectionState === 'connecting' ? (
+            <>
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+              Connecting...
+            </>
+          ) : connectionState === 'reconnecting' ? (
+            <>
+              <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+              Reconnecting...
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4" />
+              Disconnected
+            </>
+          )}
+        </div>
+        {connectionError && (
+          <p className="text-xs text-red-400 mt-1 text-right max-w-xs">{connectionError}</p>
+        )}
+      </div>
+
+      <Header
+        mode={mode}
         onModeChange={handleModeChange}
-        isHealthy={isHealthy}
-        stats={metrics}
+        isHealthy={connectionState === 'connected'}
       />
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Error Alert */}
+        {/* Error Banner */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex gap-3 items-start">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex gap-3 items-start animate-in">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <div>
+            <div className="flex-1">
               <p className="text-red-400 font-semibold">Error</p>
               <p className="text-red-300 text-sm">{error}</p>
             </div>
+            <button
+              onClick={() => setError('')}
+              className="text-red-400 hover:text-red-300 flex-shrink-0"
+            >
+              ✕
+            </button>
           </div>
         )}
 
-        {/* Loading State */}
-        {loading ? (
+        {/* Show content once connected or if we have data */}
+        {connectionState === 'connecting' && opportunities.length === 0 ? (
           <div className="flex items-center justify-center min-h-96">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-400">Connecting to live data stream...</p>
+              {connectionError && (
+                <p className="text-red-400 text-sm mt-2">{connectionError}</p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Best Opportunity (Always visible) */}
-            <BestOpportunity 
-              opportunity={bestOpportunity}
-              onExecute={handleExecuteBestOpportunity}
-              onSkip={handleSkipOpportunity}
-              onIgnore={handleIgnoreOpportunity}
-              isLive={mode === 'live'}
-            />
+            {/* Best Opportunity Card */}
+            {bestOpportunity ? (
+              <BestOpportunity
+                opportunity={bestOpportunity}
+                onExecute={() => handleTrade(bestOpportunity)}
+                isLive={mode === 'live'}
+              />
+            ) : (
+              <div className="p-8 bg-gray-800/30 border border-gray-700 rounded-lg text-center">
+                <p className="text-gray-400">
+                  {opportunities.length === 0
+                    ? 'No opportunities currently available'
+                    : 'Waiting for best opportunity...'}
+                </p>
+              </div>
+            )}
 
             {/* Tab Navigation */}
             <div className="flex gap-4 border-b border-gray-800 overflow-x-auto">
               {[
-                { id: 'opportunities', label: '🎯 Opportunities' },
-                { id: 'positions', label: '💼 Positions & PnL' },
-                { id: 'health', label: '🏥 Health Monitor' },
-                { id: 'config', label: '⚙️ Configuration' },
-              ].map(tab => (
+                { id: 'opportunities', label: '📊 Opportunities' },
+                { id: 'positions', label: '💼 Positions' },
+                { id: 'history', label: '📜 Trade History' },
+                { id: 'health', label: '🏥 Health' },
+                { id: 'config', label: '⚙️ Config' },
+              ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -198,49 +187,55 @@ export default function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            <div className="animate-fade-in">
+            <div className="animate-fadeIn">
               {activeTab === 'opportunities' && (
-                <OpportunitiesTable 
+                <OpportunitiesTable
                   opportunities={opportunities}
                   onTrade={handleTrade}
-                  sortBy="edge"
-                  filterEdge={2.0}
+                  isLive={mode === 'live'}
                 />
               )}
 
-              {activeTab === 'positions' && (
-                <PositionsView positions={positions} />
-              )}
+              {activeTab === 'positions' && <PositionsView positions={positions} />}
 
-              {activeTab === 'health' && (
-                <HealthMonitor health={{ 
-                  kalshi: isHealthy ? 'connected' : 'disconnected',
-                  espn: 'connected',
-                  draftkings: 'connected',
-                  supabase: isHealthy ? 'connected' : 'disconnected',
-                }} />
-              )}
+              {activeTab === 'history' && <TradeHistory trades={trades} />}
+
+              {activeTab === 'health' && <HealthMonitor health={health} />}
 
               {activeTab === 'config' && (
-                <ConfigPanel 
-                  config={{
-                    maxExposure: 5000,
-                    maxStakePerTrade: 500,
-                    minEdgePercent: 2.5,
-                    minLiquidity: 1000,
-                    venues: ['kalshi', 'draftkings'],
-                    sports: ['nfl', 'nba', 'mlb'],
-                  }}
-                  onSave={(config) => {
-                    console.log('Config saved:', config);
-                    setError('');
-                  }}
-                />
+                <ConfigPanel onSave={() => setError('')} />
               )}
             </div>
 
-            {/* Trade History (always visible at bottom) */}
-            <TradeHistory trades={trades} />
+            {/* Metrics Summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-gray-800">
+              <div className="p-4 bg-gray-800/30 rounded">
+                <p className="text-gray-400 text-sm">Total Trades</p>
+                <p className="text-2xl font-bold text-blue-400">{metrics.total_trades}</p>
+              </div>
+              <div className="p-4 bg-gray-800/30 rounded">
+                <p className="text-gray-400 text-sm">Win Rate</p>
+                <p className="text-2xl font-bold text-green-400">
+                  {(metrics.win_rate * 100).toFixed(1)}%
+                </p>
+              </div>
+              <div className="p-4 bg-gray-800/30 rounded">
+                <p className="text-gray-400 text-sm">Cash Balance</p>
+                <p className="text-2xl font-bold text-amber-400">
+                  ${metrics.cash_balance.toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-800/30 rounded">
+                <p className="text-gray-400 text-sm">Total PnL</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    metrics.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}
+                >
+                  ${metrics.total_pnl.toFixed(2)}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </main>
@@ -249,9 +244,22 @@ export default function Dashboard() {
       <footer className="bg-gray-900 border-t border-gray-800 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-center text-gray-400 text-sm">
-            🚀 Arbitrage Bot • Mode: <span className={mode === 'live' ? 'text-red-400' : 'text-blue-400'}>
+            🤖 Arbitrage Bot • Mode:{' '}
+            <span className={mode === 'live' ? 'text-red-400 font-bold' : 'text-blue-400'}>
               {mode.toUpperCase()}
-            </span> • Last updated: {new Date().toLocaleTimeString()}
+            </span>{' '}
+            • Status:{' '}
+            <span
+              className={
+                connectionState === 'connected'
+                  ? 'text-green-400'
+                  : connectionState === 'connecting'
+                  ? 'text-yellow-400'
+                  : 'text-red-400'
+              }
+            >
+              {connectionState.toUpperCase()}
+            </span>
           </p>
         </div>
       </footer>
