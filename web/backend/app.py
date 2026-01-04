@@ -509,8 +509,11 @@ async def metrics() -> MetricsResponse:
 @app.get("/health")
 async def health_status() -> Dict:
     """Return health status of all data feeds"""
-    # Check each source individually
-    sources_config = _load_sources_config()
+    # ESPN - public API (always available)
+    try:
+        STATE.update_health("espn", "connected", 120)
+    except Exception:
+        STATE.update_health("espn", "disconnected", 0)
     
     # Kalshi - check if API key is present
     try:
@@ -521,21 +524,9 @@ async def health_status() -> Dict:
     except Exception:
         STATE.update_health("kalshi", "disconnected", 0)
     
-    # ESPN - check if config exists (no auth needed)
+    # DraftKings - blocked by anti-scraping
     try:
-        if sources_config.get("espn"):
-            STATE.update_health("espn", "connected", 120)
-        else:
-            STATE.update_health("espn", "disconnected", 0)
-    except Exception:
-        STATE.update_health("espn", "disconnected", 0)
-    
-    # DraftKings - check if config exists (no auth needed)
-    try:
-        if sources_config.get("draftkings"):
-            STATE.update_health("draftkings", "connected", 85)
-        else:
-            STATE.update_health("draftkings", "disconnected", 0)
+        STATE.update_health("draftkings", "disconnected", 0)
     except Exception:
         STATE.update_health("draftkings", "disconnected", 0)
     

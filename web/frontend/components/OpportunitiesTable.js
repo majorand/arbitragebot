@@ -87,7 +87,6 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
               </tr>
             </thead>
             <tbody>
-              {sorted.map((opp, idx) => (
               {sorted.map((opp, idx) => {
                 const isArb = opp.is_arbitrage || opp.edge >= 1.5;
                 
@@ -164,7 +163,6 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                   </tr>
                 );
               })}
-              ))}
             </tbody>
           </table>
         </div>
