@@ -11,12 +11,6 @@
   "env": {
     "NEXT_PUBLIC_API_BASE_URL": "https://api.example.com"
   },
-  "functions": {
-    "api/**": {
-      "maxDuration": 60,
-      "memory": 512
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
@@ -53,10 +47,5 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "http://localhost:8000/:path*"
-    }
-  ]
+  
 }
