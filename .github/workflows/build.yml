@@ -44,7 +44,7 @@ jobs:
         npm run type-check || true
 
     - name: Store build
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: frontend-build
         path: web/frontend/.next
