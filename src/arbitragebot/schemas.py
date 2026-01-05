@@ -14,6 +14,7 @@ class NormalizedOdds:
     league: str
     event_id: str
     start_time: datetime
+    event_name: Optional[str]
     home_team: str
     away_team: str
     market_type: MarketType

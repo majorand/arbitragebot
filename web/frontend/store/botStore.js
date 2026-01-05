@@ -43,7 +43,6 @@ export const useBotStore = create((set, get) => ({
   health: {
     kalshi: { status: 'unknown', latency: null, last_check: null },
     polymarket: { status: 'unknown', latency: null, last_check: null },
-    draftkings: { status: 'unknown', latency: null, last_check: null },
     supabase: { status: 'unknown', latency: null, last_check: null },
   },
 

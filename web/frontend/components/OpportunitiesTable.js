@@ -89,13 +89,20 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
             <tbody>
               {sorted.map((opp, idx) => {
                 const isArb = opp.is_arbitrage || opp.edge >= 1.5;
-                
+                const eventLabel = opp.event_name || opp.event || 'Market';
+                const selectionLabel = (opp.selection || opp.market_type || 'Selection')
+                  .toString()
+                  .replace(/_/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
+
                 return (
                   <tr key={idx} className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${isArb ? 'bg-green-500/5' : ''}`}>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-white">{opp.event_name || opp.event || 'Market'}</p>
-                        <p className="text-xs text-gray-400">{opp.selection || opp.market || 'Market Type'}</p>
+                        <p className="font-medium text-white">{eventLabel}</p>
+                        <p className="text-xs text-gray-300">Bet: {selectionLabel}</p>
                         <p className="text-xs text-blue-400 mt-1">{(opp.sport || 'SPORTS').toUpperCase()} · {opp.venue || 'Exchange'}</p>
                       </div>
                     </td>

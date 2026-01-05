@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://arbitragebot-api.onrender.com";
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
@@ -32,18 +32,6 @@ const MOCK_DATA = {
       confidence: 0.76,
       created_at: new Date(Date.now() - 60000).toISOString(),
     },
-    {
-      market_id: "DK-PROP-PASSING-YARDS",
-      event_name: "QB Passing Yards Over 275.5",
-      implied_odds_yes: 0.55,
-      implied_odds_no: 0.45,
-      edge: 0.015,
-      recommended_side: "yes",
-      venue: "draftkings",
-      sport: "nfl",
-      confidence: 0.68,
-      created_at: new Date(Date.now() - 120000).toISOString(),
-    },
   ],
   mode: { mode: "paper" },
   trades: [
@@ -68,17 +56,6 @@ const MOCK_DATA = {
       status: "closed",
       venue: "polymarket",
       created_at: new Date(Date.now() - 1800000).toISOString(),
-    },
-    {
-      trade_id: "TRD-003",
-      market_id: "DK-PROP-PASSING-YARDS",
-      side: "yes",
-      stake: 100.0,
-      fill_price: 0.55,
-      pnl: -100.0,
-      status: "closed",
-      venue: "draftkings",
-      created_at: new Date(Date.now() - 600000).toISOString(),
     },
   ],
   positions: [
@@ -110,7 +87,6 @@ const MOCK_DATA = {
   health: {
     kalshi: { status: "healthy", last_check: new Date().toISOString() },
     polymarket: { status: "healthy", last_check: new Date().toISOString() },
-    draftkings: { status: "healthy", last_check: new Date().toISOString() },
     supabase: { status: "healthy", last_check: new Date().toISOString() },
   },
 };

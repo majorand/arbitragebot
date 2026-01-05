@@ -5,6 +5,3 @@ sources:
   espn:
     base_url: "https://site.api.espn.com/apis/site/v2"
     rate_limit_per_minute: 120
-  draftkings:
-    base_url: "https://sportsbook.draftkings.com/sites/US-SB/api/v5"
-    rate_limit_per_minute: 30

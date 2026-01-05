@@ -40,7 +40,7 @@ class ArbitrageOpportunity:
 class ArbitrageLeg:
     """One leg of an arbitrage bet."""
     
-    source: str  # e.g., "fanduel", "draftkings", "kalshi"
+    source: str  # e.g., "fanduel", "espn", "kalshi"
     selection: str  # e.g., "Team A Win", "YES", "OVER 45.5"
     
     # Odds in multiple formats

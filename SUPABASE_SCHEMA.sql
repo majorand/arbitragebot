@@ -9,6 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS odds (
   odds_id TEXT PRIMARY KEY,
   event_id TEXT NOT NULL,
+  event_name TEXT,
   sport TEXT NOT NULL,
   league TEXT NOT NULL,
   home_team TEXT NOT NULL,

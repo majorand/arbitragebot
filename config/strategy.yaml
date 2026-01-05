@@ -1,5 +1,5 @@
 strategy:
-  min_edge_pct: 1.5
+  min_edge_pct: 0.5
   max_stake: 50
   max_exposure_per_market: 100
   per_day_loss_limit: 500

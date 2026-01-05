@@ -40,7 +40,7 @@ export default function BestOpportunity({ opportunity, onExecute, onSkip, onIgno
         </div>
         <div className="bg-gray-800/50 rounded-lg p-4">
           <p className="text-xs text-gray-400 uppercase">Venues</p>
-          <p className="text-sm font-semibold text-white mt-1">{opportunity.venues || 'Kalshi, Draftkings'}</p>
+          <p className="text-sm font-semibold text-white mt-1">{opportunity.venues || 'Kalshi, ESPN'}</p>
         </div>
         <div className="bg-gray-800/50 rounded-lg p-4">
           <p className="text-xs text-gray-400 uppercase">EV (est.)</p>

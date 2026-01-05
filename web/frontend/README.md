@@ -29,14 +29,14 @@ A production-ready sports arbitrage bot dashboard built with Next.js, React, and
 - Summary stats: Win rate, average edge, max drawdown
 
 ### 5. **Bot Health & Monitoring**
-- Real-time status for: Kalshi, ESPN, DraftKings, Supabase
+- Real-time status for: Kalshi, ESPN, Supabase
 - Latency metrics for each data feed
 - Recent events log with timestamps
 - Alert system for critical errors and missed trades
 
 ### 6. **Strategy Configuration**
 - **Risk Controls**: Max exposure, stake per trade, min edge %, min liquidity
-- **Venue Selection**: Toggle Kalshi, DraftKings, FanDuel, ESPN
+- **Venue Selection**: Toggle Kalshi, ESPN, FanDuel
 - **Sport Selection**: Filter by NFL, NBA, MLB, NHL
 - **Preset Configs**: Save/load named configurations
 

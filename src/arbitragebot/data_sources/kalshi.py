@@ -75,6 +75,8 @@ class KalshiDataSource:
                 if status != "active":
                     continue
                 
+                # Use Kalshi title verbatim for UI, but still parse teams for matching
+                event_name = title or ticker or event_id
                 # Parse title to extract teams/candidates
                 # Kalshi titles are like: "Will x win?" or "x vs y - winner?"
                 home_team, away_team = self._parse_title(title)
@@ -105,6 +107,7 @@ class KalshiDataSource:
                             sport=category,
                             league="kalshi",
                             event_id=event_id,
+                            event_name=event_name,
                             start_time=parse_iso_datetime(start_time),
                             home_team=home_team or "Yes",
                             away_team=away_team or "Outcome",
@@ -124,6 +127,7 @@ class KalshiDataSource:
                             sport=category,
                             league="kalshi",
                             event_id=event_id,
+                            event_name=event_name,
                             start_time=parse_iso_datetime(start_time),
                             home_team=home_team or "No",
                             away_team=away_team or "Outcome",

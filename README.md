@@ -1,6 +1,6 @@
 # 🚀 Arbitrage Bot - Sports Betting Edge Finder
 
-A production-ready **sports arbitrage bot** with a professional dashboard for finding and executing profitable trades across Kalshi, DraftKings, and other sportsbooks.
+A production-ready **sports arbitrage bot** with a professional dashboard for finding and executing profitable trades across Kalshi, ESPN, and other sportsbooks.
 
 **Status**: ✅ **FULLY DEPLOYED & READY TO USE**
 
@@ -10,7 +10,7 @@ A production-ready **sports arbitrage bot** with a professional dashboard for fi
 
 This bot **automatically detects arbitrage opportunities** in sports betting markets:
 
-1. **Fetches real-time odds** from Kalshi, DraftKings, and ESPN
+1. **Fetches real-time odds** from Kalshi and ESPN
 2. **Calculates implied probabilities** across venues
 3. **Detects profitable arbitrage** (edge > 2.5% by default)
 4. **Executes trades** in paper mode (simulated) or live mode (real money)
