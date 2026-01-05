@@ -19,6 +19,7 @@ from .canonical_layers import (
     InstrumentDomain,
     OutcomeResolution,
     MarketExpressionType,
+    normalize_category,
 )
 
 
@@ -43,13 +44,17 @@ class KalshiLayerMapper:
         market_id = market_obj.get("id", "")
         title = market_obj.get("title", "")
         subtitle = market_obj.get("subtitle", "")
+        category = market_obj.get("category", "")  # Kalshi provides category
         strike_price = market_obj.get("strike_price", 0.5)
         creator_username = market_obj.get("creator_username", "")
         expiration_ts = market_obj.get("expiration_ts", 0)
         expiration_date = datetime.fromtimestamp(expiration_ts / 1000) if expiration_ts else None
         
-        # Determine domain from title/subtitle
-        domain = self._infer_domain(title, subtitle)
+        # Determine domain from category (if provided) or infer from title
+        if category:
+            domain = normalize_category(category)
+        else:
+            domain = self._infer_domain(title, subtitle)
         
         # Layer 1: Instrument
         # Kalshi questions are already pretty good instruments
@@ -66,7 +71,7 @@ class KalshiLayerMapper:
         )
         # Use subject/predicate directly for deterministic ID
         instrument.instrument_id = CanonicalInstrument.compute_id(
-            domain.value,
+            domain,
             subject.replace("_", " ").title(),
             predicate,
         )
@@ -140,17 +145,39 @@ class KalshiLayerMapper:
         return instrument, outcome, expr, context, listing
     
     def _infer_domain(self, title: str, subtitle: str) -> InstrumentDomain:
-        """Infer domain from title/subtitle."""
+        """Infer domain from title/subtitle when category not provided."""
         text = (title + " " + subtitle).lower()
         
-        if any(w in text for w in ["trump", "biden", "election", "congress", "senate"]):
+        # Check for sports keywords
+        sports_keywords = [
+            ("nfl", InstrumentDomain.NFL),
+            ("super bowl", InstrumentDomain.NFL),
+            ("football", InstrumentDomain.NFL),
+            ("nba", InstrumentDomain.NBA),
+            ("basketball", InstrumentDomain.NBA),
+            ("mlb", InstrumentDomain.MLB),
+            ("baseball", InstrumentDomain.MLB),
+            ("nhl", InstrumentDomain.NHL),
+            ("hockey", InstrumentDomain.NHL),
+            ("soccer", InstrumentDomain.SOCCER),
+            ("ufc", InstrumentDomain.UFC),
+            ("tennis", InstrumentDomain.TENNIS),
+            ("golf", InstrumentDomain.GOLF),
+        ]
+        
+        for keyword, domain in sports_keywords:
+            if keyword in text:
+                return domain
+        
+        # Check non-sports categories
+        if any(w in text for w in ["trump", "biden", "election", "congress", "senate", "president"]):
             return InstrumentDomain.POLITICS
-        elif any(w in text for w in ["rain", "snow", "weather", "temperature"]):
-            return InstrumentDomain.WEATHER
-        elif any(w in text for w in ["bitcoin", "ethereum", "crypto", "btc"]):
+        elif any(w in text for w in ["bitcoin", "ethereum", "crypto", "btc", "eth"]):
             return InstrumentDomain.CRYPTO
-        elif any(w in text for w in ["gdp", "inflation", "unemployment", "rate"]):
-            return InstrumentDomain.MACRO
+        elif any(w in text for w in ["gdp", "inflation", "unemployment", "fed", "interest rate"]):
+            return InstrumentDomain.ECONOMICS
+        elif any(w in text for w in ["climate", "temperature", "emissions", "warming"]):
+            return InstrumentDomain.CLIMATE
         
         return InstrumentDomain.OTHER
     
@@ -232,13 +259,17 @@ class PolymarketLayerMapper:
         market_id = market_obj.get("id", "")
         title = market_obj.get("title", "")
         description = market_obj.get("description", "")
+        category = market_obj.get("category", "")  # Polymarket provides category like "NFL", "Politics"
         outcomes = market_obj.get("outcomes", ["Yes", "No"])
         creation_date = datetime.fromisoformat(
             market_obj.get("creationDate", datetime.utcnow().isoformat())
         )
         
-        # Determine domain
-        domain = self._infer_domain(title, description)
+        # Determine domain from category (if provided) or infer from title
+        if category:
+            domain = normalize_category(category)
+        else:
+            domain = self._infer_domain(title, description)
         
         # Layer 1: Instrument
         subject = self._extract_subject(title)
@@ -252,7 +283,7 @@ class PolymarketLayerMapper:
             description=description or title,
         )
         instrument.instrument_id = CanonicalInstrument.compute_id(
-            domain.value,
+            domain,
             subject.replace("_", " ").title(),
             predicate,
         )
@@ -400,9 +431,12 @@ class ESPNLayerMapper:
         game_id = game_obj.get("id", "")
         home_team = game_obj.get("home_team", "Home")
         away_team = game_obj.get("away_team", "Away")
-        league = game_obj.get("league", "nba").upper()
+        league = game_obj.get("league", "nba").lower()  # ESPN provides league: nfl, nba, mlb, nhl
         start_time = datetime.fromisoformat(game_obj.get("start_time", datetime.utcnow().isoformat()))
         venue = game_obj.get("venue", "")
+        
+        # Normalize league/sport to domain
+        domain = normalize_category(league)
         
         # NORMALIZE teams using canonical form: sort alphabetically for determinism
         teams_sorted = sorted([home_team, away_team])
@@ -411,14 +445,14 @@ class ESPNLayerMapper:
         # Layer 1: Instrument (moneyline winner)
         instrument = CanonicalInstrument(
             instrument_id="",
-            domain=InstrumentDomain.SPORTS,
+            domain=domain,
             subject=teams_canonical,
             predicate="moneyline_winner",
             description=f"{away_team} @ {home_team}",
         )
         # Use canonical subject/predicate for ID computation
         instrument.instrument_id = CanonicalInstrument.compute_id(
-            InstrumentDomain.SPORTS.value,
+            domain,
             teams_canonical,
             "moneyline_winner",
         )

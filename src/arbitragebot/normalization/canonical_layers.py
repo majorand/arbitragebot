@@ -23,14 +23,108 @@ from typing import Dict, List, Optional
 # ============================================================================
 
 class InstrumentDomain(Enum):
-    """Categories of instruments."""
-    SPORTS = "sports"
+    """Categories of instruments - normalized across providers."""
+    # Sports (normalized)
+    NFL = "nfl"
+    NBA = "nba"
+    MLB = "mlb"
+    NHL = "nhl"
+    SOCCER = "soccer"
+    UFC = "ufc"
+    TENNIS = "tennis"
+    GOLF = "golf"
+    ESPORTS = "esports"
+    
+    # Non-sports (preserved from Kalshi/Polymarket)
     POLITICS = "politics"
-    WEATHER = "weather"
     CRYPTO = "crypto"
-    MACRO = "macro"
+    FINANCE = "finance"
+    ECONOMICS = "economics"
+    CLIMATE = "climate"
+    TECH = "tech"
+    CULTURE = "culture"
     ENTERTAINMENT = "entertainment"
+    WORLD = "world"
+    ELECTIONS = "elections"
+    
+    # Fallback
     OTHER = "other"
+
+
+# Category normalization maps
+SPORTS_CATEGORY_MAP = {
+    # Kalshi variations
+    "pro football": InstrumentDomain.NFL,
+    "pro basketball": InstrumentDomain.NBA,
+    "pro baseball": InstrumentDomain.MLB,
+    "pro hockey": InstrumentDomain.NHL,
+    "football": InstrumentDomain.NFL,
+    "basketball": InstrumentDomain.NBA,
+    "baseball": InstrumentDomain.MLB,
+    "hockey": InstrumentDomain.NHL,
+    
+    # Polymarket variations
+    "nfl": InstrumentDomain.NFL,
+    "nba": InstrumentDomain.NBA,
+    "mlb": InstrumentDomain.MLB,
+    "nhl": InstrumentDomain.NHL,
+    "soccer": InstrumentDomain.SOCCER,
+    "ufc": InstrumentDomain.UFC,
+    "tennis": InstrumentDomain.TENNIS,
+    "golf": InstrumentDomain.GOLF,
+    "esports": InstrumentDomain.ESPORTS,
+    
+    # ESPN variations
+    "ncaaf": InstrumentDomain.NFL,  # College football still maps to NFL domain
+    "ncaab": InstrumentDomain.NBA,  # College basketball maps to NBA domain
+}
+
+NON_SPORTS_CATEGORY_MAP = {
+    # Shared Kalshi/Polymarket categories (preserve as-is)
+    "politics": InstrumentDomain.POLITICS,
+    "crypto": InstrumentDomain.CRYPTO,
+    "finance": InstrumentDomain.FINANCE,
+    "economics": InstrumentDomain.ECONOMICS,
+    "climate": InstrumentDomain.CLIMATE,
+    "tech": InstrumentDomain.TECH,
+    "culture": InstrumentDomain.CULTURE,
+    "entertainment": InstrumentDomain.ENTERTAINMENT,
+    "world": InstrumentDomain.WORLD,
+    "elections": InstrumentDomain.ELECTIONS,
+    
+    # Aliases
+    "climate & science": InstrumentDomain.CLIMATE,
+    "tech & science": InstrumentDomain.TECH,
+    "geopolitics": InstrumentDomain.WORLD,
+}
+
+
+def normalize_category(category_str: str) -> InstrumentDomain:
+    """Normalize category string to canonical domain.
+    
+    Args:
+        category_str: Raw category from provider (e.g., "Pro Football", "NFL", "Politics")
+        
+    Returns:
+        Normalized InstrumentDomain enum
+        
+    Examples:
+        normalize_category("Pro Football") -> InstrumentDomain.NFL
+        normalize_category("NFL") -> InstrumentDomain.NFL
+        normalize_category("Politics") -> InstrumentDomain.POLITICS
+    """
+    normalized = category_str.lower().strip()
+    
+    # Check sports map first
+    if normalized in SPORTS_CATEGORY_MAP:
+        return SPORTS_CATEGORY_MAP[normalized]
+    
+    # Check non-sports map
+    if normalized in NON_SPORTS_CATEGORY_MAP:
+        return NON_SPORTS_CATEGORY_MAP[normalized]
+    
+    # Fallback
+    return InstrumentDomain.OTHER
 
 
 @dataclass
@@ -52,16 +146,16 @@ class CanonicalInstrument:
     description: str = ""
     
     @staticmethod
-    def compute_id(domain: str, subject: str, predicate: str) -> str:
+    def compute_id(domain: InstrumentDomain, subject: str, predicate: str) -> str:
         """Generate deterministic instrument ID.
         
         Examples:
-            sports|jacksonville_jaguars|win_super_bowl_lvii
+            nfl|jacksonville_jaguars_vs_kansas_city_chiefs|winner
             politics|biden|says_super_bowl_during_sotu
-            entertainment|rihanna|opens_halftime_with_dont_stop_music
+            crypto|bitcoin|exceeds_100k_by_eoy
         """
         # Normalize inputs
-        domain_norm = domain.lower()
+        domain_norm = domain.value if isinstance(domain, InstrumentDomain) else str(domain).lower()
         subject_norm = subject.lower().replace(" ", "_")
         predicate_norm = predicate.lower().replace(" ", "_")
         

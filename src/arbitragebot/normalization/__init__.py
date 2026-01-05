@@ -7,20 +7,24 @@ This module provides a complete pipeline for:
 4. Detecting arbitrage opportunities with precise math
 """
 
-from arbitragebot.normalization.schemas import (
-    Sport, MarketType, OutcomeType,
-    CanonicalEvent, CanonicalMarket, CanonicalOutcome,
-    DetectedArbitrage, ArbitrageOpportunitySingle
-)
-from arbitragebot.normalization.normalizers import (
-    KalshiNormalizer, PolymarketNormalizer, ESPNNormalizer
-)
-from arbitragebot.normalization.event_matching import (
-    EventMatcher, MatchedEventSet
-)
-from arbitragebot.normalization.arbitrage_detector import (
-    MarketMatcher, ArbitrageDetector
-)
+try:
+    from arbitragebot.normalization.schemas import (
+        Sport, MarketType, OutcomeType,
+        CanonicalEvent, CanonicalMarket, CanonicalOutcome,
+        DetectedArbitrage, ArbitrageOpportunitySingle
+    )
+    from arbitragebot.normalization.normalizers import (
+        KalshiNormalizer, PolymarketNormalizer, ESPNNormalizer
+    )
+    from arbitragebot.normalization.event_matching import (
+        EventMatcher, MatchedEventSet
+    )
+    from arbitragebot.normalization.arbitrage_detector import (
+        MarketMatcher, ArbitrageDetector
+    )
+except ImportError:
+    # Allow imports to fail for 5-layer system files
+    pass
 
 __all__ = [
     # Schemas
