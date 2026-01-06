@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from arbitragebot.normalization.schemas import (
     CanonicalEvent, CanonicalMarket, CanonicalOutcome,
     Sport, MarketType, OutcomeType,
-    PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_ESPN
+    PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_FANATICS, PROVIDER_ESPN
 )
 from arbitragebot.normalization.mappings import (
     KALSHI_MARKET_TYPE_MAP, POLYMARKET_MARKET_TYPE_MAP, ESPN_MARKET_TYPE_MAP,
@@ -98,6 +98,7 @@ class KalshiNormalizer(BaseNormalizer):
                 home_team=home_team,
                 away_team=away_team,
                 start_time=start_time,
+                event_name=title or "",
                 provider_event_ids={PROVIDER_KALSHI: event_id}
             )
             
@@ -164,6 +165,129 @@ class KalshiNormalizer(BaseNormalizer):
         return (f"kalshi_{title_prefix}_{title_hash}", "MARKET")
 
 
+class FanaticsNormalizer(BaseNormalizer):
+    """Normalize Fanatics API responses to canonical schema."""
+    
+    def normalize_market(self, event: Dict[str, Any]) -> Optional[CanonicalEvent]:
+        """Convert raw Fanatics event to canonical event."""
+        try:
+            event_id = event.get("event_id") or event.get("id")
+            if not event_id:
+                return None
+            
+            name = event.get("name") or event.get("title") or ""
+            sport_str = (event.get("sport") or "football").lower()
+            league_str = (event.get("league") or "fanatics").lower()
+            
+            # Map sport
+            if "football" in sport_str or "nfl" in league_str:
+                sport = Sport.NFL
+            elif "basketball" in sport_str or "nba" in league_str:
+                sport = Sport.NBA
+            elif "soccer" in sport_str or "football" in league_str:
+                sport = Sport.SOCCER
+            else:
+                sport = Sport.OTHER
+            
+            # Parse participants
+            home_team, away_team = self._parse_competitors(event)
+            
+            # Start time
+            start_time_str = event.get("event_datetime") or event.get("start_time")
+            start_time = (
+                datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+                if start_time_str
+                else datetime.utcnow()
+            )
+            
+            event_obj = CanonicalEvent(
+                event_id="",
+                sport=sport,
+                league=league_str,
+                home_team=home_team,
+                away_team=away_team,
+                start_time=start_time,
+                event_name=name or "",
+                provider_event_ids={PROVIDER_FANATICS: event_id}
+            )
+            
+            # Extract moneyline market if available
+            markets = event.get("markets") or []
+            for market in markets:
+                market_type = market.get("market_type") or ""
+                if "moneyline" not in market_type.lower():
+                    continue
+                
+                selections = market.get("selections") or []
+                outcomes = []
+                
+                for selection in selections:
+                    sel_name = selection.get("name") or ""
+                    odds_val = selection.get("decimal_odds")
+                    
+                    if not sel_name or odds_val is None:
+                        continue
+                    
+                    try:
+                        odds_float = float(odds_val)
+                        prob = 1.0 / odds_float if odds_float > 0 else 0.5
+                        prob = min(max(prob, 0.01), 0.99)
+                    except (TypeError, ValueError):
+                        continue
+                    
+                    # Determine if home or away
+                    is_home = home_team and home_team.lower() in sel_name.lower()
+                    outcome_type = OutcomeType.YES if is_home else OutcomeType.NO
+                    
+                    outcomes.append(CanonicalOutcome(
+                        outcome_type=outcome_type,
+                        title=sel_name,
+                        implied_probability=prob,
+                        price=prob,
+                        provider_outcome_id=selection.get("outcome_id") or sel_name
+                    ))
+                
+                if outcomes:
+                    market_obj = CanonicalMarket(
+                        market_id="",
+                        market_type=MarketType.YES_NO,
+                        outcomes=outcomes,
+                        provider_market_ids={PROVIDER_FANATICS: event_id}
+                    )
+                    event_obj.markets.append(market_obj)
+                    break
+            
+            return event_obj if event_obj.markets else None
+        
+        except Exception as e:
+            LOGGER.warning(f"Failed to normalize Fanatics event: {e}")
+            return None
+    
+    def _parse_competitors(self, event: dict) -> tuple[str, str]:
+        """Extract home and away team names from Fanatics event."""
+        competitors = event.get("competitors") or []
+        if isinstance(competitors, list) and len(competitors) >= 2:
+            home = (
+                competitors[0].get("name")
+                or competitors[0].get("team_name")
+                or ""
+            )
+            away = (
+                competitors[1].get("name")
+                or competitors[1].get("team_name")
+                or ""
+            )
+            return (home[:50], away[:50])
+        
+        # Fallback: parse from name
+        name = event.get("name") or ""
+        if " vs " in name.lower():
+            parts = name.split(" vs ")
+            return (parts[0].strip()[:50], parts[1].strip()[:50])
+        
+        return ("", "")
+
+
 class PolymarketNormalizer(BaseNormalizer):
     """Normalize Polymarket API responses to canonical schema."""
     
@@ -212,6 +336,7 @@ class PolymarketNormalizer(BaseNormalizer):
                 home_team=home_team,
                 away_team=away_team,
                 start_time=start_time,
+                event_name=question or "",
                 provider_event_ids={PROVIDER_POLYMARKET: event_id}
             )
             
@@ -322,6 +447,7 @@ class ESPNNormalizer(BaseNormalizer):
                 home_team=home_team,
                 away_team=away_team,
                 start_time=start_time,
+                event_name=f"{away_team} @ {home_team}",
                 provider_event_ids={PROVIDER_ESPN: comp_id}
             )
             

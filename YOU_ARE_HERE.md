@@ -179,3 +179,4 @@ Pick your starting file above and begin!
 **Your Next Step**: Open any file from the table above  
 
 **Let's build your arbitrage bot dashboard!** 🚀
+C:/Users/major/arbitragebot/.venv/Scripts/python.exe -c "import requests, json; r=requests.post('http://localhost:8000/refresh'); print('Status', r.status_code); print(json.dumps(r.json(), indent=2))"

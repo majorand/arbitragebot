@@ -27,12 +27,12 @@ from arbitragebot.arbitrage import (
 from arbitragebot.config import StrategyConfig, TradingConfig, load_yaml
 from arbitragebot.data_sources.espn import ESPNDataSource
 from arbitragebot.data_sources.kalshi import KalshiDataSource
-from arbitragebot.data_sources.polymarket import PolymarketDataSource
+from arbitragebot.data_sources.fanatics import FanaticsDataSource
 from arbitragebot.execution.paper import PaperTradingEngine
 from arbitragebot.exchanges.kalshi import KalshiTradingClient
 from arbitragebot.normalization import (
     KalshiNormalizer,
-    PolymarketNormalizer,
+    FanaticsNormalizer,
     ESPNNormalizer,
     EventMatcher,
     MarketMatcher,
@@ -52,6 +52,7 @@ from arbitragebot.normalization.aggregator import (
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.strategies.arbitrage import CrossMarketArbitrageStrategy
 from arbitragebot.utils.odds import decimal_to_american
+from arbitragebot.core.instruments import InstrumentExtractor
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -66,10 +67,8 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
     )
     # ESPN uses public API, no config needed
     espn = ESPNDataSource()
-    # Polymarket with Web3 auth (uses private key from env)
-    polymarket = PolymarketDataSource(
-        private_key=os.getenv("POLYMARKET_PRIVATE_KEY")
-    )
+    # Fanatics Sportsbook with public API
+    fanatics = FanaticsDataSource()
 
     # Collect odds from all sources
     kalshi_odds: List[NormalizedOdds] = []
@@ -130,34 +129,53 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
         LOGGER.warning("Failed to fetch ESPN events: %s", exc)
         events_by_provider["espn"] = []
 
-    # Optional: Polymarket comparator (cached per instance to limit requests)
+    # Optional: Fanatics Sportsbook (cached per instance to limit requests)
     try:
-        LOGGER.info("Fetching Polymarket markets...")
-        pm_normalized = polymarket.fetch_markets()
-        LOGGER.info(f"Polymarket fetch returned {len(pm_normalized) if pm_normalized else 0} markets")
-        if pm_normalized:
-            other_odds.extend(pm_normalized)
-            LOGGER.info(f"Added {len(pm_normalized)} Polymarket markets to other_odds")
+        LOGGER.info("Fetching Fanatics markets...")
+        fanatics_normalized = fanatics.fetch_markets()
+        LOGGER.info(f"Fanatics fetch returned {len(fanatics_normalized) if fanatics_normalized else 0} markets")
+        if fanatics_normalized:
+            other_odds.extend(fanatics_normalized)
+            LOGGER.info(f"Added {len(fanatics_normalized)} Fanatics markets to other_odds")
             
             # Also fetch raw markets for canonical normalization
-            pm_raw = polymarket.fetch_raw_markets()
-            polymarket_normalizer = PolymarketNormalizer()
-            pm_events = []
-            for market in pm_raw:
+            fanatics_raw = fanatics.fetch_raw_markets()
+            
+            # Filter Fanatics markets by sport/league
+            allowed_fanatics_leagues = {"nfl", "nba", "nhl", "ncaaf", "ncaab", "mlb"}
+
+            fanatics_raw_filtered = []
+            dropped_league = 0
+            for event in fanatics_raw:
+                league = (event.get("league") or "").lower()
+                sport = (event.get("sport") or "").lower()
+                
+                if not any(l in (league + " " + sport) for l in allowed_fanatics_leagues):
+                    dropped_league += 1
+                    continue
+                
+                fanatics_raw_filtered.append(event)
+            
+            LOGGER.info(f"Fanatics filter dropped: league={dropped_league}")
+            LOGGER.info(f"Fanatics filter kept {len(fanatics_raw_filtered)}/{len(fanatics_raw)} markets")
+            
+            fanatics_normalizer = FanaticsNormalizer()
+            fanatics_events = []
+            for event in fanatics_raw_filtered:
                 try:
-                    event = polymarket_normalizer.normalize_market(market)
-                    if event:
-                        pm_events.append(event)
+                    canonical_event = fanatics_normalizer.normalize_market(event)
+                    if canonical_event:
+                        fanatics_events.append(canonical_event)
                 except Exception as e:
-                    LOGGER.debug(f"Failed to normalize Polymarket market: {e}")
-            events_by_provider["polymarket"] = pm_events
-            LOGGER.info(f"Normalized {len(pm_events)} Polymarket markets to canonical format")
+                    LOGGER.debug(f"Failed to normalize Fanatics event: {e}")
+            events_by_provider["fanatics"] = fanatics_events
+            LOGGER.info(f"Normalized {len(fanatics_events)} Fanatics markets to canonical format")
         else:
-            LOGGER.info("Polymarket returned empty list (may be rate-limited or no active markets)")
-            events_by_provider["polymarket"] = []
+            LOGGER.info("Fanatics returned empty list (may be rate-limited or no active markets)")
+            events_by_provider["fanatics"] = []
     except Exception as exc:
-        LOGGER.error("Failed to fetch Polymarket markets: %s", exc, exc_info=True)
-        events_by_provider["polymarket"] = []
+        LOGGER.error("Failed to fetch Fanatics markets: %s", exc, exc_info=True)
+        events_by_provider["fanatics"] = []
 
     # Find arbitrage opportunities using aggregation pipeline
     detected_arbitrage = _find_arbitrage_with_normalization(
@@ -200,102 +218,183 @@ def _find_arbitrage_with_normalization(
     min_edge_pct: float = 0.5,
 ) -> List[DetectedArbitrage]:
     """
-    NEW CORRECT PIPELINE:
+    INSTRUMENT-LEVEL AGGREGATION PIPELINE:
     
-    1. Aggregate events across providers (FIX #1, #2, #3)
-    2. Validate aggregation (FIX #4)
-    3. Run arbitrage detection on cross-provider outcomes (FIX #5)
+    1. Extract canonical instruments from each provider
+    2. Group outcomes by instrument across providers
+    3. Detect arbitrage at instrument level (not event level)
     
-    This ensures:
-    - Events are shared across providers
-    - Markets are grouped by type+line
-    - Outcomes have provider tags
-    - Arbitrage compares best prices across providers
+    This ensures different market phrasings map to the same instrument.
     """
     
     detected_arbs = []
     
     try:
         LOGGER.info("=" * 60)
-        LOGGER.info("AGGREGATION PHASE: Building cross-provider canonical events")
+        LOGGER.info("INSTRUMENT AGGREGATION: Converting markets to canonical instruments")
         LOGGER.info("=" * 60)
         
-        # STEP 1: Aggregate events (enforces proper hierarchy)
-        aggregated_events = aggregate_events(events_by_provider)
+        # Create instrument extractor/aggregator
+        extractor = InstrumentExtractor()
         
-        # STEP 2: Validate aggregation quality
-        stats = validate_aggregation(aggregated_events)
-        if stats['cross_provider_events'] == 0:
-            LOGGER.warning("⚠️ No cross-provider events found - arbitrage not possible")
+        # Track stats
+        total_events = 0
+        processed_events = 0
+        
+        # Process each provider's canonical events
+        for provider_name, events in events_by_provider.items():
+            if not events:
+                continue
+                
+            total_events += len(events)
+            LOGGER.info(f"Processing {len(events)} events from {provider_name}")
+            
+            for event in events:
+                home_team = getattr(event, 'home_team', None)
+                away_team = getattr(event, 'away_team', None)
+                raw_event_name = getattr(event, 'event_name', None)
+                league = getattr(event, 'league', '')
+                start_time = getattr(event, 'start_time', None)
+                sport_obj = getattr(event, 'sport', 'sports')
+
+                # Canonical sport string (handles enums)
+                sport = sport_obj.value if hasattr(sport_obj, 'value') else sport_obj
+
+                # Prefer explicit event name/question
+                text = raw_event_name
+                if not text and hasattr(event, 'display_name'):
+                    try:
+                        text = event.display_name()
+                    except Exception:
+                        text = None
+                if not text:
+                    if home_team and away_team:
+                        text = f"{home_team} vs {away_team}"
+                    else:
+                        LOGGER.debug(f"Skipping event with empty text from {provider_name}")
+                        continue
+
+                # Add outcomes per market (enforces market-type compatibility)
+                markets = getattr(event, 'markets', [])
+                if not markets:
+                    continue
+
+                processed_events += 1
+
+                for market_obj in markets:
+                    market_type_obj = getattr(market_obj, 'market_type', None)
+                    market_type = market_type_obj.value if hasattr(market_type_obj, 'value') else market_type_obj
+
+                    # Only ESPN has reliable structured teams; other providers often use placeholders (e.g., "MARKET")
+                    use_structured_teams = bool(provider_name == "espn" and home_team and away_team)
+
+                    instrument = extractor.extract_instrument(
+                        domain=sport,
+                        text=text or "",
+                        market_type=str(market_type) if market_type else None,
+                        home_team=home_team if use_structured_teams else None,
+                        away_team=away_team if use_structured_teams else None,
+                        event_name=text or raw_event_name,
+                        league=league,
+                        event_date=str(start_time) if start_time else None,
+                    )
+
+                    if instrument is None:
+                        LOGGER.debug(f"Failed to extract instrument from {provider_name}: {text}")
+                        continue
+
+                    outcomes = getattr(market_obj, 'outcomes', [])
+                    for outcome in outcomes:
+                        outcome_type_obj = getattr(outcome, 'outcome_type', None)
+                        outcome_type = outcome_type_obj.value if hasattr(outcome_type_obj, 'value') else outcome_type_obj
+                        implied_prob = getattr(outcome, 'implied_probability', None)
+                        title = getattr(outcome, 'title', '')
+
+                        if implied_prob is None:
+                            continue
+
+                        # Canonical YES/NO mapping
+                        normalized_outcome = str(outcome_type or title).upper()
+                        if normalized_outcome in ["YES", "HOME", "TRUE", "WIN"]:
+                            normalized_outcome = "true"
+                        elif normalized_outcome in ["NO", "AWAY", "FALSE", "LOSE"]:
+                            normalized_outcome = "false"
+                        else:
+                            # Team-based mapping fallback
+                            if home_team and title and home_team.lower() in title.lower():
+                                normalized_outcome = "true"
+                            elif away_team and title and away_team.lower() in title.lower():
+                                normalized_outcome = "false"
+                            else:
+                                continue
+
+                        extractor.add_outcome(
+                            instrument=instrument,
+                            outcome=normalized_outcome,
+                            provider=provider_name,
+                            price=implied_prob,
+                        )
+        
+        LOGGER.info(f"Processed {processed_events}/{total_events} events")
+        LOGGER.info(f"Extracted {len(extractor.instruments)} unique instruments")
+        
+        # Count cross-provider instruments
+        cross_provider = [inst for inst in extractor.instruments.values() if len(inst.providers) >= 2]
+        cross_provider_count = len(cross_provider)
+        single_provider_count = len(extractor.instruments) - cross_provider_count
+        avg_providers = sum(len(inst.providers) for inst in extractor.instruments.values()) / len(extractor.instruments) if extractor.instruments else 0
+        
+        LOGGER.info(f"Cross-provider instruments: {cross_provider_count}")
+        LOGGER.info(f"Single-provider instruments: {single_provider_count}")
+        LOGGER.info(f"Average providers per instrument: {avg_providers:.2f}")
+        
+        if cross_provider_count == 0:
+            LOGGER.warning("⚠️ No cross-provider instruments found - arbitrage not possible")
             return []
         
         LOGGER.info("=" * 60)
-        LOGGER.info("ARBITRAGE DETECTION PHASE: Scanning cross-provider outcomes")
+        LOGGER.info("ARBITRAGE DETECTION: Scanning instruments for opportunities")
         LOGGER.info("=" * 60)
         
-        # STEP 3: Detect arbitrage on aggregated outcomes
-        for event_id, event_data in aggregated_events.items():
-            event_providers = event_data["providers"]
+        # Get arbitrage opportunities
+        opportunities = extractor.get_arbitrage_opportunities(min_roi=min_edge_pct)
+        
+        LOGGER.info(f"Found {len(opportunities)} arbitrage opportunities >= {min_edge_pct}%")
+        
+        # Convert to DetectedArbitrage format
+        for inst in opportunities:
+            # Get best prices for each outcome
+            best_true_prices = inst.outcomes.get("true", {})
+            best_false_prices = inst.outcomes.get("false", {})
             
-            # Skip single-provider events
-            if len(event_providers) < 2:
+            if not best_true_prices or not best_false_prices:
                 continue
             
-            event_name = f"{event_data['home_team']} @ {event_data['away_team']}"
-            LOGGER.debug(f"\nScanning: {event_name} (providers: {event_providers})")
+            best_true_provider = min(best_true_prices.items(), key=lambda x: x[1])[0]
+            best_true_price = best_true_prices[best_true_provider]
             
-            # For each market in this event
-            for market_key, market_data in event_data.get("markets", {}).items():
-                market_type = market_data["market_type"]
-                
-                # For each outcome in this market
-                for outcome_key, provider_quotes in market_data["outcomes"].items():
-                    provider_count = len(provider_quotes)
-                    
-                    # Only consider outcomes with 2+ provider quotes
-                    if provider_count < 2:
-                        continue
-                    
-                    # Extract prices from each provider
-                    prices = {}
-                    for provider, quote_data in provider_quotes.items():
-                        prices[provider] = quote_data["implied_probability"]
-                    
-                    # Calculate best (lowest) and second-best price
-                    sorted_prices = sorted(prices.items(), key=lambda x: x[1])
-                    best_provider, best_price = sorted_prices[0]
-                    
-                    # Check for arbitrage: sum of best prices < 1
-                    sum_best = sum([p[1] for p in sorted_prices[:2]])  # Two best prices
-                    edge_pct = (1.0 - sum_best) * 100
-                    
-                    if edge_pct >= min_edge_pct and provider_count >= 2:
-                        LOGGER.info(
-                            f"✓ ARBITRAGE FOUND: {event_name} | {outcome_key} | "
-                            f"Edge: {edge_pct:.2f}% | Providers: {list(prices.keys())}"
-                        )
-                        
-                        # Create opportunity record
-                        arb = {
-                            "event_id": event_id,
-                            "event_name": event_name,
-                            "market_type": str(market_type),
-                            "outcome": outcome_key,
-                            "providers": event_providers,
-                            "provider_quotes": prices,
-                            "edge_pct": edge_pct,
-                            "roi_pct": (1.0 / sum_best - 1.0) * 100 if sum_best > 0 else 0,
-                            "best_provider": best_provider,
-                            "best_price": best_price,
-                        }
-                        detected_arbs.append(arb)
+            best_false_provider = min(best_false_prices.items(), key=lambda x: x[1])[0]
+            best_false_price = best_false_prices[best_false_provider]
+            
+            arb = {
+                "event_id": inst.instrument_id,
+                "event_name": inst.context.get("event_name") or f"{inst.subject.replace('_', ' ').title()}",
+                "market": inst.predicate.replace('_', ' ').upper(),
+                "providers": sorted(list(inst.providers)),
+                "yes_quotes": dict(best_true_prices),
+                "no_quotes": dict(best_false_prices),
+                "edge_pct": inst.roi,  # already percent
+                "best_yes": {"provider": best_true_provider, "price": best_true_price},
+                "best_no": {"provider": best_false_provider, "price": best_false_price},
+            }
+            detected_arbs.append(arb)
         
         LOGGER.info(f"\n{'=' * 60}")
         LOGGER.info(f"Detection complete: {len(detected_arbs)} opportunities found")
         LOGGER.info(f"{'=' * 60}\n")
         
     except Exception as e:
-        LOGGER.error(f"Aggregation pipeline failed: {e}", exc_info=True)
+        LOGGER.error(f"Instrument aggregation pipeline failed: {e}", exc_info=True)
     
     return detected_arbs
 
@@ -311,42 +410,41 @@ def _convert_detected_arbitrage_to_normalized_odds(
     results = []
     
     for arb in arbs:
-        # Get best provider quote
-        best_provider = arb.get("best_provider", "unknown")
-        best_price = arb.get("best_price", 0.5)
-        
-        # Get alternate providers for vs_source
-        all_providers = list(arb["provider_quotes"].keys())
-        vs_providers = [p for p in all_providers if p != best_provider]
-        vs_provider = vs_providers[0] if vs_providers else None
-        vs_price = arb["provider_quotes"].get(vs_provider, best_price) if vs_provider else best_price
-        
+        event_name = arb.get("event_name") or "Market"
+        best_yes = arb.get("best_yes") or {}
+        best_no = arb.get("best_no") or {}
+        providers = arb.get("providers") or []
+        market_label = arb.get("market") or "WIN"
+
+        # Use best YES price as the primary price for legacy table columns
+        primary_price = float(best_yes.get("price", 0.5))
+
         opp = NormalizedOdds(
-            sport=arb.get("market_type", "unknown"),
+            sport="sports",
             league="",
             event_id=arb["event_id"],
-            event_name=arb["event_name"],
+            event_name=event_name,
             start_time=datetime.utcnow(),
-            home_team=arb["event_name"].split("@")[0].strip() if "@" in arb["event_name"] else "",
-            away_team=arb["event_name"].split("@")[1].strip() if "@" in arb["event_name"] else "",
-            market_type=arb.get("market_type", "unknown"),
-            selection=arb["outcome"],
-            price=best_price,
-            implied_probability=best_price,
+            home_team="",
+            away_team="",
+            market_type="moneyline",
+            selection=market_label,
+            price=primary_price,
+            implied_probability=primary_price,
             american_odds=None,
-            source=best_provider,
+            source="aggregated",
             last_updated=datetime.utcnow(),
         )
-        
-        # Add arbitrage metadata
-        opp.edge = arb["edge_pct"]
-        opp.vs_source = vs_provider or "N/A"
-        opp.vs_price = vs_price
-        opp.vs_selection = arb["outcome"]
-        opp.vs_american_odds = None
-        opp.recommended_stake_kalshi = 50.0  # Default stake
-        opp.recommended_stake_other = 50.0
-        
+
+        # Screenshot-style fields for frontend
+        opp.is_arbitrage = True
+        opp.edge = float(arb.get("edge_pct", 0.0))
+        opp.roi_percentage = float(arb.get("edge_pct", 0.0))
+        opp.sources = providers
+        opp.best_yes = best_yes
+        opp.best_no = best_no
+        opp.market = market_label
+
         results.append(opp)
     
     return results

@@ -229,6 +229,12 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         "stake_kalshi": round(stake_kalshi, 2) if stake_kalshi else None,
                         "stake_other": round(stake_other, 2) if stake_other else None,
                         "roi_percentage": round(edge, 2),
+
+                        # Instrument-level aggregation fields (screenshot-style UI)
+                        "sources": getattr(opp, "sources", None),
+                        "market": getattr(opp, "market", None),
+                        "best_yes": getattr(opp, "best_yes", None),
+                        "best_no": getattr(opp, "best_no", None),
                     })
                 
                 # Format positions

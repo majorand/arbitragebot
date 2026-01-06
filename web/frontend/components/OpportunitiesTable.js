@@ -97,17 +97,47 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                   .trim()
                   .replace(/\b\w/g, (c) => c.toUpperCase());
 
+                const sourcesLabel = Array.isArray(opp.sources) && opp.sources.length
+                  ? opp.sources.join(' • ')
+                  : null;
+                const marketLabel = (opp.market || selectionLabel || 'WIN')
+                  .toString()
+                  .replace(/_/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .toUpperCase();
+                const bestYes = opp.best_yes || null;
+                const bestNo = opp.best_no || null;
+                const hasBestSides = !!(bestYes && bestYes.provider && typeof bestYes.price === 'number') ||
+                  !!(bestNo && bestNo.provider && typeof bestNo.price === 'number');
+
                 return (
                   <tr key={idx} className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${isArb ? 'bg-green-500/5' : ''}`}>
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium text-white">{eventLabel}</p>
-                        <p className="text-xs text-gray-300">Bet: {selectionLabel}</p>
+                        <p className="text-xs text-gray-300">Market: {marketLabel}</p>
                         <p className="text-xs text-blue-400 mt-1">{(opp.sport || 'SPORTS').toUpperCase()} · {opp.venue || 'Exchange'}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {isArb && opp.vs_source ? (
+                      {hasBestSides ? (
+                        <div className="space-y-1">
+                          {sourcesLabel && (
+                            <p className="text-xs text-gray-300">Sources: {sourcesLabel}</p>
+                          )}
+                          {bestYes?.provider && typeof bestYes.price === 'number' && (
+                            <p className="text-xs text-white">
+                              Best YES: <span className="font-semibold">{bestYes.provider}</span> @ <span className="font-bold">{bestYes.price.toFixed(3)}</span>
+                            </p>
+                          )}
+                          {bestNo?.provider && typeof bestNo.price === 'number' && (
+                            <p className="text-xs text-white">
+                              Best NO: <span className="font-semibold">{bestNo.provider}</span> @ <span className="font-bold">{bestNo.price.toFixed(3)}</span>
+                            </p>
+                          )}
+                        </div>
+                      ) : isArb && opp.vs_source ? (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono bg-blue-500/20 text-blue-300 px-2 py-1 rounded">

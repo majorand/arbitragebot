@@ -47,7 +47,7 @@ class PolymarketDataSource:
         else:
             configured_urls = [
                 "https://clob.polymarket.com",  # main CLOB API
-                "https://gamma.polymarket.com",  # legacy gamma API
+                "https://gamma-api.polymarket.com",  # legacy gamma API (resolves reliably)
             ]
 
         self.base_urls: List[str] = configured_urls
@@ -120,17 +120,115 @@ class PolymarketDataSource:
 
         payload = None
         last_error: Exception | None = None
-        for url_base in self.base_urls:
+        selected_base: str | None = None
+
+        def _extract_markets(obj):
+            if isinstance(obj, list):
+                return obj
+            if isinstance(obj, dict):
+                return obj.get("markets") or obj.get("data") or obj.get("results") or []
+            return []
+
+        def _is_tradable(m: dict) -> bool:
+            # CLOB markets often have inconsistent active/closed/archived flags.
+            # The most reliable signal for tradability is accepting_orders and/or enable_order_book.
+            if m.get("accepting_orders") is True:
+                return True
+            if m.get("enable_order_book") is True:
+                return True
+            return False
+
+        def _filter_active(markets: list[dict]) -> list[dict]:
+            if not self.active_only:
+                return markets
+            filtered: list[dict] = []
+            for m in markets:
+                # Prefer tradable markets when those fields exist.
+                if "accepting_orders" in m or "enable_order_book" in m:
+                    if not _is_tradable(m):
+                        continue
+                    filtered.append(m)
+                    continue
+
+                # Fallback for legacy APIs without order-book flags.
+                if m.get("archived") is True:
+                    continue
+                if m.get("closed") is True:
+                    continue
+                if m.get("active") is False:
+                    continue
+                filtered.append(m)
+            return filtered
+
+        def _paginate_and_filter(url_base: str) -> tuple[object | None, list[dict]]:
+            """Fetch pages until we collect enough usable markets or run out."""
             url = f"{url_base}/markets"
-            try:
-                LOGGER.debug("Attempting Polymarket fetch from: %s", url)
-                resp = requests.get(url, params=params, headers=headers, timeout=8)
+
+            collected: list[dict] = []
+            cursor: str | None = None
+            max_pages = 50
+            pages = 0
+
+            last_payload: object | None = None
+            while pages < max_pages and len(collected) < self.limit:
+                page_params = dict(params)
+                if cursor:
+                    page_params["next_cursor"] = cursor
+
+                resp = requests.get(url, params=page_params, headers=headers, timeout=10)
                 resp.raise_for_status()
-                payload = resp.json()
-                LOGGER.debug(f"Polymarket raw response type: {type(payload)}, length: {len(str(payload))}")
-                if payload is not None:
-                    LOGGER.info("Polymarket fetch succeeded via %s (authenticated: %s)", url_base, bool(headers))
+                candidate_payload = resp.json()
+                last_payload = candidate_payload
+
+                markets = _extract_markets(candidate_payload)
+                usable = _filter_active(list(markets) if markets else [])
+                collected.extend(usable)
+
+                # Cursor is only available on dict payloads (CLOB); legacy APIs may return lists.
+                if isinstance(candidate_payload, dict):
+                    cursor = candidate_payload.get("next_cursor")
+                else:
+                    cursor = None
+
+                pages += 1
+                if not cursor:
                     break
+
+            # De-dup by question_id/condition_id when possible
+            deduped: list[dict] = []
+            seen: set[str] = set()
+            for m in collected:
+                key = str(m.get("question_id") or m.get("condition_id") or m.get("id") or m.get("market_slug") or "")
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                deduped.append(m)
+
+            return last_payload, deduped
+
+        for url_base in self.base_urls:
+            try:
+                LOGGER.debug("Attempting Polymarket fetch from: %s/markets", url_base)
+                candidate_payload, usable = _paginate_and_filter(url_base)
+                payload = candidate_payload
+                selected_base = url_base
+
+                LOGGER.debug(
+                    "Polymarket endpoint %s produced %d usable markets after pagination/filtering",
+                    url_base,
+                    len(usable),
+                )
+
+                # Prefer endpoints that actually return usable markets.
+                if self.active_only and not usable:
+                    last_error = None
+                    continue
+
+                # For normalization, use the filtered list directly.
+                markets = usable
+                LOGGER.info("Polymarket fetch succeeded via %s (authenticated: %s)", url_base, bool(headers))
+                break
             except Exception as exc:
                 last_error = exc
                 LOGGER.warning("Polymarket fetch failed via %s: %s", url_base, exc)
@@ -143,20 +241,27 @@ class PolymarketDataSource:
             LOGGER.info("Returning cached Polymarket data: %d markets", len(self._cached))
             return self._cached
 
-        # Handle both list and dict responses
-        if isinstance(payload, list):
-            markets = payload
-            LOGGER.debug(f"Polymarket returned list directly: {len(markets)} items")
-        elif isinstance(payload, dict):
-            # Try common dict keys for markets array
-            markets = payload.get("markets") or payload.get("data") or payload.get("results") or []
-            LOGGER.debug(f"Extracted markets from dict: {len(markets)} markets")
-        else:
-            LOGGER.warning(f"Unexpected Polymarket response type: {type(payload)}")
-            markets = []
+        markets = _extract_markets(payload)
+        if selected_base is None:
+            # If we didn't pick a base URL (e.g. all returned unusable but no exceptions), keep the first payload.
+            selected_base = self.base_urls[0] if self.base_urls else "<unknown>"
         
+        # Local filter: the remote "active=true" param is not consistently honored across endpoints.
+        if self.active_only:
+            before = len(markets) if markets else 0
+            markets = _filter_active(list(markets) if markets else [])
+            LOGGER.info(
+                "Polymarket active_only filter: kept %d/%d markets (source=%s)",
+                len(markets),
+                before,
+                selected_base,
+            )
+
         if not markets:
-            LOGGER.warning(f"Polymarket returned empty markets list. Response keys: {payload.keys() if isinstance(payload, dict) else 'N/A'}")
+            LOGGER.warning(
+                "Polymarket returned empty markets list after filtering. Response keys: %s",
+                payload.keys() if isinstance(payload, dict) else "N/A",
+            )
         
         LOGGER.debug(f"Polymarket API returned {len(markets) if markets else 0} markets (after extraction)")
         normalized = self._normalize_markets(markets)
@@ -180,16 +285,95 @@ class PolymarketDataSource:
 
         payload = None
         last_error: Exception | None = None
-        for url_base in self.base_urls:
+
+        def _extract_markets(obj):
+            if isinstance(obj, list):
+                return obj
+            if isinstance(obj, dict):
+                return obj.get("markets") or obj.get("data") or obj.get("results") or []
+            return []
+
+        def _is_tradable(m: dict) -> bool:
+            if m.get("accepting_orders") is True:
+                return True
+            if m.get("enable_order_book") is True:
+                return True
+            return False
+
+        def _filter_active(markets: list[dict]) -> list[dict]:
+            if not self.active_only:
+                return markets
+            filtered: list[dict] = []
+            for m in markets:
+                if "accepting_orders" in m or "enable_order_book" in m:
+                    if not _is_tradable(m):
+                        continue
+                    filtered.append(m)
+                    continue
+
+                if m.get("archived") is True:
+                    continue
+                if m.get("closed") is True:
+                    continue
+                if m.get("active") is False:
+                    continue
+                filtered.append(m)
+            return filtered
+
+        def _paginate_and_filter(url_base: str) -> list[dict]:
             url = f"{url_base}/markets"
-            try:
-                LOGGER.debug("Attempting Polymarket raw fetch from: %s", url)
-                resp = requests.get(url, params=params, headers=headers, timeout=8)
+            collected: list[dict] = []
+            cursor: str | None = None
+            max_pages = 50
+            pages = 0
+            while pages < max_pages and len(collected) < self.limit:
+                page_params = dict(params)
+                if cursor:
+                    page_params["next_cursor"] = cursor
+
+                resp = requests.get(url, params=page_params, headers=headers, timeout=10)
                 resp.raise_for_status()
-                payload = resp.json()
-                if payload is not None:
-                    LOGGER.debug("Polymarket raw fetch succeeded via %s", url_base)
+                candidate_payload = resp.json()
+                markets = _extract_markets(candidate_payload)
+                usable = _filter_active(list(markets) if markets else [])
+                collected.extend(usable)
+
+                if isinstance(candidate_payload, dict):
+                    cursor = candidate_payload.get("next_cursor")
+                else:
+                    cursor = None
+                pages += 1
+                if not cursor:
                     break
+
+            deduped: list[dict] = []
+            seen: set[str] = set()
+            for m in collected:
+                key = str(m.get("question_id") or m.get("condition_id") or m.get("id") or m.get("market_slug") or "")
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                deduped.append(m)
+            return deduped
+
+        for url_base in self.base_urls:
+            try:
+                LOGGER.debug("Attempting Polymarket raw fetch from: %s/markets", url_base)
+                usable = _paginate_and_filter(url_base)
+                LOGGER.debug(
+                    "Polymarket raw endpoint %s produced %d usable markets after pagination/filtering",
+                    url_base,
+                    len(usable),
+                )
+
+                if self.active_only and not usable:
+                    last_error = None
+                    continue
+
+                payload = usable
+                LOGGER.debug("Polymarket raw fetch succeeded via %s", url_base)
+                break
             except Exception as exc:
                 last_error = exc
                 LOGGER.warning("Polymarket raw fetch failed via %s: %s", url_base, exc)
@@ -199,14 +383,16 @@ class PolymarketDataSource:
                 LOGGER.error("Polymarket raw fetch failed after trying all base URLs: %s", last_error)
             return []
 
-        # Handle both list and dict responses
+        # `payload` is already the filtered list when successful.
         if isinstance(payload, list):
             return payload
-        elif isinstance(payload, dict):
-            return payload.get("markets") or payload.get("data") or payload.get("results") or []
-        else:
-            LOGGER.warning(f"Unexpected Polymarket response type: {type(payload)}")
+        markets = _extract_markets(payload)
+        if self.active_only:
+            markets = _filter_active(list(markets) if markets else [])
+        if not isinstance(markets, list):
+            LOGGER.warning(f"Unexpected Polymarket response type after extraction: {type(markets)}")
             return []
+        return markets
 
     def _normalize_markets(self, markets: Iterable[dict]) -> List[NormalizedOdds]:
         normalized: List[NormalizedOdds] = []

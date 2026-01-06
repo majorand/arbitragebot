@@ -90,6 +90,9 @@ class CanonicalEvent:
     home_team: str                  # Participant 1
     away_team: str                  # Participant 2
     start_time: datetime
+
+    # Human-readable title/question (critical for YES/NO markets)
+    event_name: str = ""
     
     markets: List[CanonicalMarket] = field(default_factory=list)
     
@@ -101,6 +104,8 @@ class CanonicalEvent:
     
     def display_name(self) -> str:
         """Human-readable event name."""
+        if self.event_name:
+            return self.event_name
         return f"{self.home_team} @ {self.away_team}"
 
 
@@ -139,7 +144,8 @@ class DetectedArbitrage:
 # Provider name constants
 PROVIDER_KALSHI = "kalshi"
 PROVIDER_POLYMARKET = "polymarket"
+PROVIDER_FANATICS = "fanatics"
 PROVIDER_ESPN = "espn"
 PROVIDER_FANDUEL = "fanduel"
 
-CANONICAL_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_ESPN}
+CANONICAL_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_FANATICS, PROVIDER_ESPN}

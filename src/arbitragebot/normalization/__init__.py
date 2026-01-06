@@ -14,7 +14,7 @@ try:
         DetectedArbitrage, ArbitrageOpportunitySingle
     )
     from arbitragebot.normalization.normalizers import (
-        KalshiNormalizer, PolymarketNormalizer, ESPNNormalizer
+        KalshiNormalizer, PolymarketNormalizer, FanaticsNormalizer, ESPNNormalizer
     )
     from arbitragebot.normalization.event_matching import (
         EventMatcher, MatchedEventSet
@@ -33,7 +33,7 @@ __all__ = [
     "DetectedArbitrage", "ArbitrageOpportunitySingle",
     
     # Normalizers
-    "KalshiNormalizer", "PolymarketNormalizer", "ESPNNormalizer",
+    "KalshiNormalizer", "PolymarketNormalizer", "FanaticsNormalizer", "ESPNNormalizer",
     
     # Matching & Detection
     "EventMatcher", "MatchedEventSet",
