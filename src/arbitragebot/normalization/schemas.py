@@ -35,7 +35,7 @@ class MarketType(Enum):
     MONEYLINE = "moneyline"      # Who wins (3-way for soccer)
     SPREAD = "spread"             # Point spread
     TOTAL = "total"               # Over/under total points
-    YES_NO = "yes_no"             # Binary yes/no (Kalshi, Polymarket)
+    YES_NO = "yes_no"             # Binary yes/no (Kalshi, Fanatics)
     PROP = "prop"                 # Player/game prop
 
 
@@ -143,9 +143,8 @@ class DetectedArbitrage:
 
 # Provider name constants
 PROVIDER_KALSHI = "kalshi"
-PROVIDER_POLYMARKET = "polymarket"
 PROVIDER_FANATICS = "fanatics"
 PROVIDER_ESPN = "espn"
 PROVIDER_FANDUEL = "fanduel"
 
-CANONICAL_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_FANATICS, PROVIDER_ESPN}
+CANONICAL_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_FANATICS, PROVIDER_ESPN}

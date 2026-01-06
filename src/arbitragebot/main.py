@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 try:
     from dotenv import load_dotenv
@@ -49,10 +49,12 @@ from arbitragebot.normalization.aggregator import (
     canonical_event_id,
     canonical_market_key,
 )
+from arbitragebot.normalization.schemas import PROVIDER_FANATICS, PROVIDER_KALSHI
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.strategies.arbitrage import CrossMarketArbitrageStrategy
 from arbitragebot.utils.odds import decimal_to_american
 from arbitragebot.core.instruments import InstrumentExtractor
+from arbitragebot.opportunity_helpers import BinaryArbitrageOpportunity, find_arb_opportunities
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -357,37 +359,15 @@ def _find_arbitrage_with_normalization(
         LOGGER.info("=" * 60)
         
         # Get arbitrage opportunities
-        opportunities = extractor.get_arbitrage_opportunities(min_roi=min_edge_pct)
-        
-        LOGGER.info(f"Found {len(opportunities)} arbitrage opportunities >= {min_edge_pct}%")
-        
-        # Convert to DetectedArbitrage format
-        for inst in opportunities:
-            # Get best prices for each outcome
-            best_true_prices = inst.outcomes.get("true", {})
-            best_false_prices = inst.outcomes.get("false", {})
-            
-            if not best_true_prices or not best_false_prices:
-                continue
-            
-            best_true_provider = min(best_true_prices.items(), key=lambda x: x[1])[0]
-            best_true_price = best_true_prices[best_true_provider]
-            
-            best_false_provider = min(best_false_prices.items(), key=lambda x: x[1])[0]
-            best_false_price = best_false_prices[best_false_provider]
-            
-            arb = {
-                "event_id": inst.instrument_id,
-                "event_name": inst.context.get("event_name") or f"{inst.subject.replace('_', ' ').title()}",
-                "market": inst.predicate.replace('_', ' ').upper(),
-                "providers": sorted(list(inst.providers)),
-                "yes_quotes": dict(best_true_prices),
-                "no_quotes": dict(best_false_prices),
-                "edge_pct": inst.roi,  # already percent
-                "best_yes": {"provider": best_true_provider, "price": best_true_price},
-                "best_no": {"provider": best_false_provider, "price": best_false_price},
-            }
-            detected_arbs.append(arb)
+        opportunities = find_arb_opportunities(
+            extractor.instruments.values(),
+            min_edge_pct,
+        )
+
+        LOGGER.info(
+            f"Found {len(opportunities)} Kalshi ↔ Fanatics opportunities >= {min_edge_pct}%"
+        )
+        detected_arbs.extend(opportunities)
         
         LOGGER.info(f"\n{'=' * 60}")
         LOGGER.info(f"Detection complete: {len(detected_arbs)} opportunities found")
@@ -400,53 +380,88 @@ def _find_arbitrage_with_normalization(
 
 
 def _convert_detected_arbitrage_to_normalized_odds(
-    arbs: List[dict],
+    arbs: List[BinaryArbitrageOpportunity | dict],
 ) -> List[NormalizedOdds]:
-    """Convert aggregated arbitrage opportunities back to NormalizedOdds for display.
-    
-    Bridges the aggregator output to the existing UI format.
-    """
-    
-    results = []
-    
-    for arb in arbs:
-        event_name = arb.get("event_name") or "Market"
-        best_yes = arb.get("best_yes") or {}
-        best_no = arb.get("best_no") or {}
-        providers = arb.get("providers") or []
-        market_label = arb.get("market") or "WIN"
+    """Convert aggregated Kalshi ↔ Fanatics opportunities into NormalizedOdds for the UI."""
 
-        # Use best YES price as the primary price for legacy table columns
-        primary_price = float(best_yes.get("price", 0.5))
+    def _get_attr(item, name, default=None):
+        if isinstance(item, dict):
+            return item.get(name, default)
+        return getattr(item, name, default)
+
+    results: List[NormalizedOdds] = []
+
+    for arb in arbs:
+        event_name = _get_attr(arb, "event_name") or "Market"
+        market_label = (_get_attr(arb, "market") or "YES_NO").replace("_", " ").upper()
+        providers = _get_attr(arb, "providers") or []
+        best_yes = (_get_attr(arb, "best_yes") or {})
+        best_no = (_get_attr(arb, "best_no") or {})
+        links = _get_attr(arb, "links") or {}
+        edge_pct = float(_get_attr(arb, "edge_pct", 0.0))
+        recommended_side = _get_attr(arb, "recommended_side") or "yes"
+        expected_profit = _get_attr(arb, "expected_profit", 0.0)
+
+        kalshi_leg = None
+        fanatics_leg = None
+        for leg in (best_yes, best_no):
+            provider = leg.get("provider")
+            if provider == PROVIDER_KALSHI:
+                kalshi_leg = leg
+            elif provider == PROVIDER_FANATICS:
+                fanatics_leg = leg
+
+        kalshi_price = float(kalshi_leg.get("price", 0.0)) if kalshi_leg else 0.0
+        fanatics_price = float(fanatics_leg.get("price", 0.0)) if fanatics_leg else 0.0
+        kalshi_decimal = float(kalshi_leg.get("decimal_odds", 0.0)) if kalshi_leg else 0.0
+        fanatics_decimal = float(fanatics_leg.get("decimal_odds", 0.0)) if fanatics_leg else 0.0
 
         opp = NormalizedOdds(
             sport="sports",
             league="",
-            event_id=arb["event_id"],
+            event_id=_get_attr(arb, "event_id") or f"arb-{datetime.utcnow().timestamp()}",
             event_name=event_name,
             start_time=datetime.utcnow(),
             home_team="",
             away_team="",
             market_type="moneyline",
-            selection=market_label,
-            price=primary_price,
-            implied_probability=primary_price,
-            american_odds=None,
+            selection=(kalshi_leg.get("selection") if kalshi_leg else market_label) or "YES",
+            price=kalshi_price,
+            implied_probability=kalshi_price,
+            american_odds=decimal_to_american(kalshi_decimal) if kalshi_decimal else None,
             source="aggregated",
             last_updated=datetime.utcnow(),
         )
 
-        # Screenshot-style fields for frontend
         opp.is_arbitrage = True
-        opp.edge = float(arb.get("edge_pct", 0.0))
-        opp.roi_percentage = float(arb.get("edge_pct", 0.0))
+        opp.edge = edge_pct
+        opp.roi_percentage = edge_pct
         opp.sources = providers
+        opp.providers = providers
         opp.best_yes = best_yes
         opp.best_no = best_no
         opp.market = market_label
+        opp.links = links
+        opp.recommended_side = recommended_side
+        opp.reason = f"Kalshi vs Fanatics single-leg binary edge {edge_pct:.2f}%"
+        opp.recommendation = f"Buy {opp.selection} on Kalshi and hedge the opposite on Fanatics."
+        opp.venues = "Kalshi ↔ Fanatics"
+        opp.ev = float(expected_profit)
+        opp.legs = _get_attr(arb, "legs") or []
+
+        if kalshi_leg:
+            opp.stake_kalshi = float(kalshi_leg.get("stake", 0.0))
+        if fanatics_leg:
+            opp.vs_source = PROVIDER_FANATICS
+            opp.vs_selection = fanatics_leg.get("selection") or "NO"
+            opp.vs_price = fanatics_price
+            opp.vs_american_odds = decimal_to_american(fanatics_decimal) if fanatics_decimal else None
+            opp.stake_other = float(fanatics_leg.get("stake", 0.0))
+
+        opp.market_id = _get_attr(arb, "event_id")
 
         results.append(opp)
-    
+
     return results
 
 

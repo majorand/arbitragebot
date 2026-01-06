@@ -7,11 +7,11 @@ from typing import List, Optional, Dict, Any
 from arbitragebot.normalization.schemas import (
     CanonicalEvent, CanonicalMarket, CanonicalOutcome,
     Sport, MarketType, OutcomeType,
-    PROVIDER_KALSHI, PROVIDER_POLYMARKET, PROVIDER_FANATICS, PROVIDER_ESPN
+    PROVIDER_KALSHI, PROVIDER_FANATICS, PROVIDER_ESPN
 )
 from arbitragebot.normalization.mappings import (
-    KALSHI_MARKET_TYPE_MAP, POLYMARKET_MARKET_TYPE_MAP, ESPN_MARKET_TYPE_MAP,
-    KALSHI_SPORT_MAP, POLYMARKET_SPORT_MAP, ESPN_SPORT_MAP,
+    KALSHI_MARKET_TYPE_MAP, ESPN_MARKET_TYPE_MAP,
+    KALSHI_SPORT_MAP, ESPN_SPORT_MAP,
     map_outcome_type, normalize_team_name
 )
 
@@ -46,7 +46,7 @@ class BaseNormalizer:
                 return abs(price) / (abs(price) + 100.0)
         
         elif price_format == "cents":
-            # Kalshi/Polymarket cents: 50 = $0.50 = 50%
+            # Kalshi/Fanatics: price is decimal odds or probability
             return price / 100.0
         
         else:
@@ -102,7 +102,11 @@ class KalshiNormalizer(BaseNormalizer):
                 provider_event_ids={PROVIDER_KALSHI: event_id}
             )
             
-            # Create YES/NO market
+            # Create YES/NO market from Kalshi's binary pricing
+            # YES = market resolves true (event happens), NO = market resolves false
+            # This binary structure enables direct arbitrage comparison with:
+            #   - Fanatics moneyline (Home Win YES vs Away Win NO)
+            #   - ESPN spread/total (favored YES vs underdog NO)
             yes_bid = market.get("yes_bid", 0)
             no_bid = market.get("no_bid", 0)
             
@@ -211,15 +215,16 @@ class FanaticsNormalizer(BaseNormalizer):
                 provider_event_ids={PROVIDER_FANATICS: event_id}
             )
             
-            # Extract moneyline market if available
+            # Extract moneyline market if available - Fanatics uses moneyline for sports betting
             markets = event.get("markets") or []
+            moneyline_outcomes = {}  # Track outcomes by team/selection to build proper YES/NO binary market
+            
             for market in markets:
                 market_type = market.get("market_type") or ""
                 if "moneyline" not in market_type.lower():
                     continue
                 
                 selections = market.get("selections") or []
-                outcomes = []
                 
                 for selection in selections:
                     sel_name = selection.get("name") or ""
@@ -230,32 +235,59 @@ class FanaticsNormalizer(BaseNormalizer):
                     
                     try:
                         odds_float = float(odds_val)
+                        # Convert decimal odds to implied probability
                         prob = 1.0 / odds_float if odds_float > 0 else 0.5
                         prob = min(max(prob, 0.01), 0.99)
                     except (TypeError, ValueError):
                         continue
                     
-                    # Determine if home or away
-                    is_home = home_team and home_team.lower() in sel_name.lower()
-                    outcome_type = OutcomeType.YES if is_home else OutcomeType.NO
-                    
-                    outcomes.append(CanonicalOutcome(
-                        outcome_type=outcome_type,
-                        title=sel_name,
-                        implied_probability=prob,
-                        price=prob,
-                        provider_outcome_id=selection.get("outcome_id") or sel_name
-                    ))
+                    moneyline_outcomes[sel_name.lower()] = {
+                        "name": sel_name,
+                        "prob": prob,
+                        "odds": odds_float,
+                        "outcome_id": selection.get("outcome_id") or sel_name
+                    }
                 
-                if outcomes:
-                    market_obj = CanonicalMarket(
-                        market_id="",
-                        market_type=MarketType.YES_NO,
-                        outcomes=outcomes,
-                        provider_market_ids={PROVIDER_FANATICS: event_id}
-                    )
-                    event_obj.markets.append(market_obj)
-                    break
+                # Once we have moneyline outcomes, build YES/NO binary market
+                if moneyline_outcomes:
+                    # Map selections to home/away
+                    home_outcome = None
+                    away_outcome = None
+                    
+                    for sel_lower, outcome_data in moneyline_outcomes.items():
+                        if home_team and home_team.lower() in sel_lower:
+                            home_outcome = outcome_data
+                        elif away_team and away_team.lower() in sel_lower:
+                            away_outcome = outcome_data
+                    
+                    # If we have both home and away, create YES/NO binary market
+                    if home_outcome and away_outcome:
+                        outcomes = [
+                            CanonicalOutcome(
+                                outcome_type=OutcomeType.YES,
+                                title=f"{home_team} to win",
+                                implied_probability=home_outcome["prob"],
+                                price=home_outcome["prob"],
+                                provider_outcome_id=home_outcome["outcome_id"]
+                            ),
+                            CanonicalOutcome(
+                                outcome_type=OutcomeType.NO,
+                                title=f"{away_team} to win",
+                                implied_probability=away_outcome["prob"],
+                                price=away_outcome["prob"],
+                                provider_outcome_id=away_outcome["outcome_id"]
+                            )
+                        ]
+                        
+                        market_obj = CanonicalMarket(
+                            market_id="",
+                            market_type=MarketType.YES_NO,
+                            outcomes=outcomes,
+                            provider_market_ids={PROVIDER_FANATICS: event_id}
+                        )
+                        event_obj.markets.append(market_obj)
+                    
+                    break  # Only process first moneyline market
             
             return event_obj if event_obj.markets else None
         
@@ -286,120 +318,6 @@ class FanaticsNormalizer(BaseNormalizer):
             return (parts[0].strip()[:50], parts[1].strip()[:50])
         
         return ("", "")
-
-
-class PolymarketNormalizer(BaseNormalizer):
-    """Normalize Polymarket API responses to canonical schema."""
-    
-    def normalize_market(self, market: Dict[str, Any]) -> Optional[CanonicalEvent]:
-        """Convert raw Polymarket market to canonical event.
-        
-        Expected Polymarket market structure:
-        {
-            "id": "...",
-            "question_id": "...",
-            "question": "Will X happen?",
-            "tokens": [
-                {"outcome": "YES", "price": 0.65, ...},
-                {"outcome": "NO", "price": 0.35, ...}
-            ],
-            "end_date_iso": "2026-01-10T...",
-            "tags": ["nfl", ...],
-            ...
-        }
-        """
-        try:
-            event_id = market.get("question_id") or market.get("id")
-            if not event_id:
-                return None
-            
-            question = market.get("question", "")
-            
-            # Map sport from tags
-            tags = market.get("tags", [])
-            sport_tag = tags[0].lower() if tags else ""
-            sport = POLYMARKET_SPORT_MAP.get(sport_tag, Sport.OTHER)
-            
-            # Parse participants
-            home_team, away_team = self._parse_participants(question)
-            
-            # Start time
-            start_time_str = market.get("end_date_iso")
-            start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00")) if start_time_str else datetime.utcnow()
-            
-            # Create event - use placeholder ID, aggregator will compute canonical_event_id
-            # This allows proper cross-provider matching
-            event = CanonicalEvent(
-                event_id="",  # PLACEHOLDER - aggregator will compute canonical_event_id()
-                sport=sport,
-                league="Polymarket",
-                home_team=home_team,
-                away_team=away_team,
-                start_time=start_time,
-                event_name=question or "",
-                provider_event_ids={PROVIDER_POLYMARKET: event_id}
-            )
-            
-            # Create YES/NO market from tokens
-            tokens = market.get("tokens", [])
-            outcomes = []
-            
-            for token in tokens:
-                outcome_str = token.get("outcome", "")
-                price = float(token.get("price", 0.5))
-                
-                outcome_type = OutcomeType.YES if "yes" in outcome_str.lower() else OutcomeType.NO
-                
-                outcomes.append(CanonicalOutcome(
-                    outcome_type=outcome_type,
-                    title=outcome_str,
-                    implied_probability=price,  # Polymarket prices are already probabilities
-                    price=price,
-                    provider_outcome_id=token.get("id", outcome_str)
-                ))
-            
-            # Use provider's market ID as placeholder - aggregator will compute canonical key
-            market_obj = CanonicalMarket(
-                market_id="",  # PLACEHOLDER - aggregator will compute canonical_market_key()
-                market_type=MarketType.YES_NO,
-                outcomes=outcomes,
-                provider_market_ids={PROVIDER_POLYMARKET: event_id}
-            )
-            
-            event.markets.append(market_obj)
-            return event
-        
-        except Exception as e:
-            LOGGER.warning(f"Failed to normalize Polymarket market: {e}")
-            return None
-    
-    def _parse_participants(self, question: str) -> tuple[str, str]:
-        """Parse participants from Polymarket question.
-        
-        Since Polymarket markets are often predictions (not team sports),
-        we use a combined hash of the question as a pseudo-team identifier.
-        This ensures each market gets its own canonical event ID.
-        """
-        # For non-sports markets, use question hash as identifier to ensure uniqueness
-        import hashlib
-        q_hash = hashlib.md5(question.encode()).hexdigest()[:8]
-        
-        # Try to extract real teams if it looks like a matchup
-        if " @ " in question:
-            parts = question.split(" @ ")
-            team1 = parts[0].strip()[:30]
-            team2 = parts[1].strip()[:30]
-            return (team1, team2)
-        
-        if " vs " in question.lower():
-            parts = question.split(" vs ")
-            team1 = parts[0].strip()[:30]
-            team2 = parts[1].strip()[:30]
-            return (team1, team2)
-        
-        # Default: use question hash to ensure uniqueness
-        q_prefix = question[:20].replace(" ", "_")
-        return (f"polymarket_{q_prefix}_{q_hash}", "MARKET")
 
 
 class ESPNNormalizer(BaseNormalizer):

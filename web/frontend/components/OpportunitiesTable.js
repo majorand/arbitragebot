@@ -1,12 +1,28 @@
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
 import { useState } from 'react';
+
+/**
+ * @typedef {import('../lib/opportunityTypes').BinaryOpportunity} BinaryOpportunity
+ */
+
+const REQUIRED_PROVIDERS = ['kalshi', 'fanatics'];
+
+const isStrictBinaryOpportunity = (opp) => {
+  const providers = opp?.providers || opp?.sources || [];
+  if (!Array.isArray(providers)) return false;
+  return REQUIRED_PROVIDERS.every((provider) =>
+    providers.map((p) => (p || '').toLowerCase()).includes(provider)
+  );
+};
 
 export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy = 'volume', filterEdge = 0 }) {
   const [expandedId, setExpandedId] = useState(null);
   const [sort, setSort] = useState(sortBy);
   const [minEdge, setMinEdge] = useState(filterEdge);
 
-  const filtered = opportunities.filter(opp => opp.edge >= minEdge);
+  const filtered = opportunities.filter(
+    (opp) => (opp.edge || 0) >= minEdge && isStrictBinaryOpportunity(opp)
+  );
   
   const sorted = [...filtered].sort((a, b) => {
     switch (sort) {
@@ -97,9 +113,13 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                   .trim()
                   .replace(/\b\w/g, (c) => c.toUpperCase());
 
-                const sourcesLabel = Array.isArray(opp.sources) && opp.sources.length
-                  ? opp.sources.join(' • ')
-                  : null;
+                const providerSources = opp.providers || opp.sources || [];
+                  const normalizedProviders = Array.isArray(providerSources)
+                    ? providerSources.map((p) => (p || '').toUpperCase())
+                    : [];
+                  const sourcesLabel = normalizedProviders.length
+                    ? normalizedProviders.join(' ↔ ')
+                    : null;
                 const marketLabel = (opp.market || selectionLabel || 'WIN')
                   .toString()
                   .replace(/_/g, ' ')
@@ -130,6 +150,30 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                             <p className="text-xs text-white">
                               Best YES: <span className="font-semibold">{bestYes.provider}</span> @ <span className="font-bold">{bestYes.price.toFixed(3)}</span>
                             </p>
+                          )}
+                          {opp.links && (opp.links.kalshi || opp.links.fanatics) && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              {opp.links.kalshi && (
+                                <a
+                                  href={opp.links.kalshi}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] text-blue-300 font-semibold flex items-center gap-1"
+                                >
+                                  Kalshi <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                              {opp.links.fanatics && (
+                                <a
+                                  href={opp.links.fanatics}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] text-purple-300 font-semibold flex items-center gap-1"
+                                >
+                                  Fanatics <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
                           )}
                           {bestNo?.provider && typeof bestNo.price === 'number' && (
                             <p className="text-xs text-white">

@@ -20,11 +20,6 @@ KALSHI_MARKET_TYPE_MAP = {
     "BINARY": MarketType.YES_NO,
 }
 
-POLYMARKET_MARKET_TYPE_MAP = {
-    "binary": MarketType.YES_NO,
-    "categorical": MarketType.YES_NO,  # Treat as YES_NO for now
-}
-
 FANDUEL_MARKET_TYPE_MAP = {
     "MONEYLINE": MarketType.MONEYLINE,
     "SPREAD": MarketType.SPREAD,
@@ -54,21 +49,6 @@ KALSHI_SPORT_MAP = {
     "politics": Sport.POLITICS,
     "weather": Sport.WEATHER,
     "economy": Sport.MACRO,
-    "crypto": Sport.CRYPTO,
-}
-
-POLYMARKET_SPORT_MAP = {
-    "nfl": Sport.NFL,
-    "nba": Sport.NBA,
-    "mlb": Sport.MLB,
-    "nhl": Sport.NHL,
-    "ncaaf": Sport.NCAAF,
-    "ncaab": Sport.NCAAB,
-    "soccer": Sport.SOCCER,
-    "tennis": Sport.TENNIS,
-    "mma": Sport.MMA,
-    "boxing": Sport.BOXING,
-    "politics": Sport.POLITICS,
     "crypto": Sport.CRYPTO,
 }
 

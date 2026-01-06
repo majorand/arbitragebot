@@ -89,7 +89,14 @@ class FanaticsDataSource:
         return markets
 
     def _normalize_markets(self, markets: Iterable[dict]) -> List[NormalizedOdds]:
-        """Convert Fanatics API events to NormalizedOdds."""
+        """Convert Fanatics API events to NormalizedOdds.
+        
+        IMPORTANT: Fanatics moneyline markets (Home Win / Away Win) are the equivalent
+        of Kalshi's binary YES/NO markets. Both represent the same outcome from different
+        perspectives, enabling cross-provider arbitrage detection.
+        
+        Fanatics outcome: "Home Team to Win" (moneyline) ↔ Kalshi outcome: "Home Team YES"
+        """
         normalized: List[NormalizedOdds] = []
         now = datetime.now(timezone.utc)
 
@@ -134,12 +141,18 @@ class FanaticsDataSource:
                     continue
 
                 # Process moneyline markets (most common for cross-provider overlap)
+                # These are binary: Home Win vs Away Win = equivalent to Kalshi YES/NO
+                moneyline_count = 0
                 for market in markets:
                     market_type = market.get("market_type") or market.get("type") or ""
                     if "moneyline" not in market_type.lower():
                         continue
 
+                    moneyline_count += 1
                     selections = market.get("selections") or market.get("outcomes") or []
+                    
+                    # Collect all selections for this moneyline market (should be 2: home and away)
+                    selections_by_team = {}
                     for selection in selections:
                         try:
                             sel_name = selection.get("name") or selection.get("label") or ""
@@ -164,6 +177,11 @@ class FanaticsDataSource:
                             except (TypeError, ValueError):
                                 continue
 
+                            selections_by_team[sel_name] = {
+                                "prob": prob,
+                                "odds": odds_float
+                            }
+                            
                             normalized.append(
                                 NormalizedOdds(
                                     sport=str(sport)[:50],
@@ -188,6 +206,14 @@ class FanaticsDataSource:
                                     f"Error processing Fanatics selection in market {idx}: {e}"
                                 )
                             continue
+                    
+                    # Log binary market capture for arbitrage detection
+                    if len(selections_by_team) >= 2:
+                        LOGGER.debug(
+                            f"Fanatics binary moneyline captured for {name}: "
+                            f"{', '.join(selections_by_team.keys())} "
+                            f"(ready for Kalshi cross-provider arbitrage)"
+                        )
 
             except Exception as exc:
                 if idx < 3:

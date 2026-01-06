@@ -338,7 +338,7 @@ async def refresh_market_data() -> dict:
         if source_counts:
             STATE.update_health("kalshi", "connected" if source_counts.get("kalshi") else "disconnected", 45)
             STATE.update_health("espn", "connected" if source_counts.get("espn") else "disconnected", 120)
-            STATE.update_health("polymarket", "connected" if source_counts.get("polymarket") else "disconnected", 250)
+            STATE.update_health("fanatics", "connected" if source_counts.get("fanatics") else "disconnected", 150)
     except Exception:
         pass
 
@@ -395,7 +395,7 @@ class TradingState:
             "kalshi": {"status": "unknown", "latency": 0, "last_check": None},
             "espn": {"status": "unknown", "latency": 0, "last_check": None},
             "supabase": {"status": "unknown", "latency": 0, "last_check": None},
-            "polymarket": {"status": "unknown", "latency": 0, "last_check": None},
+            "fanatics": {"status": "unknown", "latency": 0, "last_check": None},
         }
         self.latest_data: List[NormalizedOdds] = []
         self.latest_refresh: Optional[datetime] = None
@@ -452,14 +452,14 @@ async def startup_event():
             STATE.update_health("espn", "disconnected", 0)
             STATE.add_event(f"Config file not found: {sources_path}", "warning")
 
-        # Polymarket feed (env override optional)
-        pm_urls = os.getenv("POLYMARKET_BASE_URLS", "https://clob.polymarket.com,https://gamma.polymarket.com")
-        if pm_urls:
-            STATE.update_health("polymarket", "connected", 250)
-            STATE.add_event("Polymarket feed configured", "success")
+        # Check Fanatics (optional)
+        fanatics_url = os.getenv("FANATICS_BASE_URL", "https://api.fanatics.com/api/v3")
+        if fanatics_url:
+            STATE.update_health("fanatics", "connected", 150)
+            STATE.add_event("Fanatics feed configured", "success")
         else:
-            STATE.update_health("polymarket", "disconnected", 0)
-            STATE.add_event("Polymarket feed not configured", "warning")
+            STATE.update_health("fanatics", "disconnected", 0)
+            STATE.add_event("Fanatics feed not configured", "warning")
         
         # Check Supabase (optional)
         try:
@@ -668,12 +668,12 @@ async def health_status() -> Dict:
     except Exception:
         STATE.update_health("kalshi", "disconnected", 0)
 
-    # Polymarket - best-effort connectivity status
+    # Fanatics - best-effort connectivity status
     try:
-        pm_urls = os.getenv("POLYMARKET_BASE_URLS")
-        STATE.update_health("polymarket", "connected" if pm_urls else "connected", 250)
+        fanatics_url = os.getenv("FANATICS_BASE_URL")
+        STATE.update_health("fanatics", "connected" if fanatics_url else "connected", 150)
     except Exception:
-        STATE.update_health("polymarket", "disconnected", 0)
+        STATE.update_health("fanatics", "disconnected", 0)
     
     # Check Supabase (optional)
     try:

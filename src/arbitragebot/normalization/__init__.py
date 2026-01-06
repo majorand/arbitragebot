@@ -1,7 +1,7 @@
 """Normalization and arbitrage detection layer.
 
 This module provides a complete pipeline for:
-1. Normalizing odds from different providers (Kalshi, Polymarket, ESPN)
+1. Normalizing odds from different providers (Kalshi, Fanatics, ESPN)
 2. Matching equivalent events across providers
 3. Matching equivalent markets within events
 4. Detecting arbitrage opportunities with precise math
@@ -14,7 +14,7 @@ try:
         DetectedArbitrage, ArbitrageOpportunitySingle
     )
     from arbitragebot.normalization.normalizers import (
-        KalshiNormalizer, PolymarketNormalizer, FanaticsNormalizer, ESPNNormalizer
+        KalshiNormalizer, FanaticsNormalizer, ESPNNormalizer
     )
     from arbitragebot.normalization.event_matching import (
         EventMatcher, MatchedEventSet
@@ -33,7 +33,7 @@ __all__ = [
     "DetectedArbitrage", "ArbitrageOpportunitySingle",
     
     # Normalizers
-    "KalshiNormalizer", "PolymarketNormalizer", "FanaticsNormalizer", "ESPNNormalizer",
+    "KalshiNormalizer", "FanaticsNormalizer", "ESPNNormalizer",
     
     # Matching & Detection
     "EventMatcher", "MatchedEventSet",

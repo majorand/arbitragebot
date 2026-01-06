@@ -45,7 +45,7 @@ export default function HealthMonitor() {
   const feeds = [
     { name: 'Kalshi API', key: 'kalshi', health: health.kalshi },
     { name: 'ESPN Feed', key: 'espn', health: health.espn },
-    { name: 'Polymarket Feed', key: 'polymarket', health: health.polymarket },
+    { name: 'Fanatics Feed', key: 'fanatics', health: health.fanatics },
     { name: 'Supabase DB', key: 'supabase', health: health.supabase },
   ];
 
