@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Iterable, List, Sequence
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.utils.time import parse_iso_datetime
@@ -23,6 +25,8 @@ class FanaticsDataSource:
         base_url: str | None = None,
         min_interval_seconds: int = 120,
         limit: int = 500,
+        retries: int = 3,
+        backoff_factor: float = 0.5,
     ) -> None:
         self.base_url = base_url or os.getenv(
             "FANATICS_BASE_URL", "https://api.fanatics.com/api/v3"
@@ -31,9 +35,23 @@ class FanaticsDataSource:
         self.limit = limit
         self._last_fetch_ts: float = 0.0
         self._cached: List[NormalizedOdds] = []
+        self._session = self._build_session(retries, backoff_factor)
 
     def _should_skip(self) -> bool:
         return (time.time() - self._last_fetch_ts) < self.min_interval_seconds
+
+    def _build_session(self, retries: int, backoff_factor: float) -> requests.Session:
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=retries,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+            backoff_factor=backoff_factor,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
 
     def fetch_markets(self) -> List[NormalizedOdds]:
         """Fetch and normalize markets from Fanatics API."""
@@ -43,7 +61,7 @@ class FanaticsDataSource:
 
         try:
             LOGGER.debug("Attempting Fanatics fetch from: %s/betting/featured", self.base_url)
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self.base_url}/betting/featured",
                 params={"limit": self.limit},
                 timeout=10,
@@ -70,7 +88,7 @@ class FanaticsDataSource:
     def fetch_raw_markets(self) -> List[dict]:
         """Fetch raw market data from Fanatics (not normalized)."""
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self.base_url}/betting/featured",
                 params={"limit": self.limit},
                 timeout=10,

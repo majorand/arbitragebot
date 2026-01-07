@@ -67,7 +67,10 @@ export default function HealthMonitor() {
         <div className="space-y-3">
           {feeds.map((feed) => {
             const isConnected = feed.health?.status === 'connected';
-            const latency = feed.health?.latency || 0;
+            const latency = feed.health?.latency ?? 0;
+            const lastCheck = feed.health?.last_check;
+            const latencyLabel = latency ? `${latency}ms` : '--';
+            const lastCheckLabel = lastCheck ? formatTime(lastCheck) : '--:--:--';
 
             return (
               <div key={feed.key} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
@@ -81,6 +84,9 @@ export default function HealthMonitor() {
                     <p className="font-medium text-white">{feed.name}</p>
                     <p className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
                       {isConnected ? 'Connected' : 'Disconnected'}
+                    </p>
+                    <p className="text-[10px] text-gray-300">
+                      {latencyLabel} latency · Last check {lastCheckLabel}
                     </p>
                   </div>
                 </div>

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import time
 
 try:
     from dotenv import load_dotenv
@@ -336,20 +337,30 @@ async def refresh_market_data() -> dict:
                 source_counts[src] = source_counts.get(src, 0) + 1
 
         if source_counts:
-            STATE.update_health("kalshi", "connected" if source_counts.get("kalshi") else "disconnected", 45)
-            STATE.update_health("espn", "connected" if source_counts.get("espn") else "disconnected", 120)
-            STATE.update_health("fanatics", "connected" if source_counts.get("fanatics") else "disconnected", 150)
+            kalshi_status = "connected" if source_counts.get("kalshi") else "disconnected"
+            espn_status = "connected" if source_counts.get("espn") else "disconnected"
+            fanatics_status = "connected" if source_counts.get("fanatics") else "disconnected"
+
+            _set_health_status("kalshi", kalshi_status, 45)
+            _set_health_status("espn", espn_status, 120)
+            _set_health_status(
+                "fanatics",
+                fanatics_status,
+                150,
+                success_message="Fanatics feed back online",
+                failure_message="Fanatics feed returned no markets",
+            )
     except Exception:
         pass
 
     # Persist odds to Supabase when available
-    try:
-        client = get_supabase_client()
-        if client and data:
+    client = get_supabase_client()
+    if client and data:
+        try:
             store_odds(client, data)
-    except Exception as exc:  # pragma: no cover - external HTTP
-        STATE.add_event(f"Supabase store failed: {str(exc)[:60]}", "warning")
-
+        except Exception as exc:  # pragma: no cover - external HTTP
+            STATE.add_event(f"Supabase store failed: {str(exc)[:60]}", "warning")
+    _check_supabase_connection(client)
     STATE.update_market_data(data)
     timestamp = STATE.latest_refresh.isoformat() if STATE.latest_refresh else None
     return {"success": True, "count": len(data), "timestamp": timestamp}
@@ -428,6 +439,44 @@ class TradingState:
         self.add_event(f"Market data refreshed ({len(data)} entries)", "info")
 
 
+def _set_health_status(
+    feed: str,
+    status: str,
+    latency: int,
+    success_message: str | None = None,
+    failure_message: str | None = None,
+) -> None:
+    prev_status = STATE.health.get(feed, {}).get("status")
+    STATE.update_health(feed, status, latency)
+    if prev_status != status:
+        message = success_message if status == "connected" else failure_message
+        if message:
+            STATE.add_event(message, "success" if status == "connected" else "warning")
+
+def _check_supabase_connection(client=None) -> None:
+    if not HAS_SUPABASE:
+        _set_health_status("supabase", "disconnected", 0, failure_message="Supabase module unavailable")
+        return
+
+    resolved_client = client or get_supabase_client()
+    if not resolved_client:
+        _set_health_status("supabase", "disconnected", 0, failure_message="Supabase credentials missing")
+        return
+
+    start = time.time()
+    try:
+        resolved_client.table("trades").select("trade_id").limit(1).execute()
+        latency = int((time.time() - start) * 1000)
+        _set_health_status("supabase", "connected", latency, success_message="Supabase connection healthy")
+    except Exception as exc:
+        latency = int((time.time() - start) * 1000)
+        _set_health_status(
+            "supabase",
+            "disconnected",
+            latency,
+            failure_message=f"Supabase ping failed: {str(exc)[:80]}",
+        )
+
 STATE = TradingState()
 
 # Initialize health status on startup
@@ -455,39 +504,18 @@ async def startup_event():
         # Check Fanatics (optional)
         fanatics_url = os.getenv("FANATICS_BASE_URL", "https://api.fanatics.com/api/v3")
         if fanatics_url:
-            STATE.update_health("fanatics", "connected", 150)
+            _set_health_status("fanatics", "connected", 150)
             STATE.add_event("Fanatics feed configured", "success")
         else:
-            STATE.update_health("fanatics", "disconnected", 0)
+            _set_health_status("fanatics", "disconnected", 0)
             STATE.add_event("Fanatics feed not configured", "warning")
         
         # Check Supabase (optional)
-        try:
-            if HAS_SUPABASE:
-                import time
-                start = time.time()
-                client = get_supabase_client()
-                if client:
-                    # Test real connection by attempting a simple operation
-                    try:
-                        client.table('trades').select('count', count='exact').execute()
-                        latency = int((time.time() - start) * 1000)
-                        STATE.update_health("supabase", "connected", latency)
-                        STATE.add_event(f"Supabase database connected ({latency}ms)", "success")
-                    except Exception as e:
-                        latency = int((time.time() - start) * 1000)
-                        STATE.update_health("supabase", "connected", latency)
-                        STATE.add_event(f"Supabase client ready but table query failed: {str(e)[:50]}", "warning")
-                else:
-                    # Treat as optional: mark lightly connected to avoid blocking UI
-                    STATE.update_health("supabase", "connected", 1)
-                    STATE.add_event("Supabase not configured - using in-memory mocks", "warning")
-            else:
-                STATE.update_health("supabase", "connected", 1)
-                STATE.add_event("Supabase module not available - using in-memory mocks", "warning")
-        except Exception:
-            STATE.update_health("supabase", "disconnected", 0)
-            STATE.add_event("Supabase connection failed", "warning")
+        if HAS_SUPABASE:
+            _check_supabase_connection()
+        else:
+            _set_health_status("supabase", "disconnected", 0)
+            STATE.add_event("Supabase module not available - using in-memory mocks", "warning")
         
         # Prime market data cache immediately
         await refresh_market_data()
@@ -653,46 +681,10 @@ async def refresh_endpoint() -> Dict[str, Any]:
 @app.get("/health")
 async def health_status() -> Dict:
     """Return health status of all data feeds"""
-    # ESPN - public API (always available)
-    try:
-        STATE.update_health("espn", "connected", 120)
-    except Exception:
-        STATE.update_health("espn", "disconnected", 0)
-    
-    # Kalshi - check if API key is present
-    try:
-        if os.getenv("KALSHI_API_KEY"):
-            STATE.update_health("kalshi", "connected", 45)
-        else:
-            STATE.update_health("kalshi", "disconnected", 0)
-    except Exception:
-        STATE.update_health("kalshi", "disconnected", 0)
-
-    # Fanatics - best-effort connectivity status
-    try:
-        fanatics_url = os.getenv("FANATICS_BASE_URL")
-        STATE.update_health("fanatics", "connected" if fanatics_url else "connected", 150)
-    except Exception:
-        STATE.update_health("fanatics", "disconnected", 0)
-    
-    # Check Supabase (optional)
-    try:
-        import time
-        client = get_supabase_client()
-        if client:
-            start = time.time()
-            try:
-                client.table('trades').select('trade_id', count='exact').limit(1).execute()
-                latency = int((time.time() - start) * 1000)
-                STATE.update_health("supabase", "connected", latency)
-            except Exception:
-                latency = int((time.time() - start) * 1000)
-                STATE.update_health("supabase", "connected", latency)
-        else:
-            STATE.update_health("supabase", "connected", 1)
-    except Exception:
-        STATE.update_health("supabase", "disconnected", 0)
-    
+    _set_health_status("espn", "connected", 120)
+    kalshi_status = "connected" if os.getenv("KALSHI_API_KEY") else "disconnected"
+    _set_health_status("kalshi", kalshi_status, 45)
+    _check_supabase_connection()
     return STATE.health
 
 

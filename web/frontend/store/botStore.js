@@ -134,16 +134,25 @@ export const useBotStore = create((set, get) => ({
 
   // Update health status
   updateHealth: (source, status) => {
-    set((state) => ({
-      health: {
-        ...state.health,
-        [source]: {
-          ...state.health[source],
-          ...status,
-          last_check: new Date().toISOString(),
+    set((state) => {
+      const prev = state.health[source] || {};
+      const normalized =
+        typeof status === 'string'
+          ? { status }
+          : status || {};
+
+      return {
+        health: {
+          ...state.health,
+          [source]: {
+            ...prev,
+            status: normalized.status || prev.status,
+            latency: normalized.latency ?? prev.latency,
+            last_check: normalized.last_check || prev.last_check || new Date().toISOString(),
+          },
         },
-      },
-    }));
+      };
+    });
   },
 
   // Update equity curve
