@@ -34,8 +34,8 @@ export default function ConfigPanel({ onSave }) {
     max_exposure_per_market: 100,
     per_day_loss_limit: 500,
     per_book_limit: {
-      draftkings: 250,
-      espn: 0,
+      kalshi: 250,
+      polymarket: 250,
     },
     paperTradingBalance: paperTradingBalance,
   });
@@ -77,8 +77,8 @@ export default function ConfigPanel({ onSave }) {
       max_exposure_per_market: 100,
       per_day_loss_limit: 500,
       per_book_limit: {
-        draftkings: 250,
-        espn: 0,
+        kalshi: 250,
+        polymarket: 250,
       },
       paperTradingBalance: paperTradingBalance,
     });

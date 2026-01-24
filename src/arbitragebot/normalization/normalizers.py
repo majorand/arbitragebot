@@ -7,11 +7,11 @@ from typing import List, Optional, Dict, Any
 from arbitragebot.normalization.schemas import (
     CanonicalEvent, CanonicalMarket, CanonicalOutcome,
     Sport, MarketType, OutcomeType,
-    PROVIDER_KALSHI, PROVIDER_FANATICS, PROVIDER_ESPN
+    PROVIDER_KALSHI, PROVIDER_POLYMARKET
 )
 from arbitragebot.normalization.mappings import (
-    KALSHI_MARKET_TYPE_MAP, ESPN_MARKET_TYPE_MAP,
-    KALSHI_SPORT_MAP, ESPN_SPORT_MAP,
+    KALSHI_MARKET_TYPE_MAP,
+    KALSHI_SPORT_MAP,
     map_outcome_type, normalize_team_name
 )
 
@@ -169,268 +169,133 @@ class KalshiNormalizer(BaseNormalizer):
         return (f"kalshi_{title_prefix}_{title_hash}", "MARKET")
 
 
-class FanaticsNormalizer(BaseNormalizer):
-    """Normalize Fanatics API responses to canonical schema."""
+class PolymarketNormalizer(BaseNormalizer):
+    """Normalize Polymarket API responses to canonical schema."""
     
-    def normalize_market(self, event: Dict[str, Any]) -> Optional[CanonicalEvent]:
-        """Convert raw Fanatics event to canonical event."""
-        try:
-            event_id = event.get("event_id") or event.get("id")
-            if not event_id:
-                return None
-            
-            name = event.get("name") or event.get("title") or ""
-            sport_str = (event.get("sport") or "football").lower()
-            league_str = (event.get("league") or "fanatics").lower()
-            
-            # Map sport
-            if "football" in sport_str or "nfl" in league_str:
-                sport = Sport.NFL
-            elif "basketball" in sport_str or "nba" in league_str:
-                sport = Sport.NBA
-            elif "soccer" in sport_str or "football" in league_str:
-                sport = Sport.SOCCER
-            else:
-                sport = Sport.OTHER
-            
-            # Parse participants
-            home_team, away_team = self._parse_competitors(event)
-            
-            # Start time
-            start_time_str = event.get("event_datetime") or event.get("start_time")
-            start_time = (
-                datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
-                if start_time_str
-                else datetime.utcnow()
-            )
-            
-            event_obj = CanonicalEvent(
-                event_id="",
-                sport=sport,
-                league=league_str,
-                home_team=home_team,
-                away_team=away_team,
-                start_time=start_time,
-                event_name=name or "",
-                provider_event_ids={PROVIDER_FANATICS: event_id}
-            )
-            
-            # Extract moneyline market if available - Fanatics uses moneyline for sports betting
-            markets = event.get("markets") or []
-            moneyline_outcomes = {}  # Track outcomes by team/selection to build proper YES/NO binary market
-            
-            for market in markets:
-                market_type = market.get("market_type") or ""
-                if "moneyline" not in market_type.lower():
-                    continue
-                
-                selections = market.get("selections") or []
-                
-                for selection in selections:
-                    sel_name = selection.get("name") or ""
-                    odds_val = selection.get("decimal_odds")
-                    
-                    if not sel_name or odds_val is None:
-                        continue
-                    
-                    try:
-                        odds_float = float(odds_val)
-                        # Convert decimal odds to implied probability
-                        prob = 1.0 / odds_float if odds_float > 0 else 0.5
-                        prob = min(max(prob, 0.01), 0.99)
-                    except (TypeError, ValueError):
-                        continue
-                    
-                    moneyline_outcomes[sel_name.lower()] = {
-                        "name": sel_name,
-                        "prob": prob,
-                        "odds": odds_float,
-                        "outcome_id": selection.get("outcome_id") or sel_name
-                    }
-                
-                # Once we have moneyline outcomes, build YES/NO binary market
-                if moneyline_outcomes:
-                    # Map selections to home/away
-                    home_outcome = None
-                    away_outcome = None
-                    
-                    for sel_lower, outcome_data in moneyline_outcomes.items():
-                        if home_team and home_team.lower() in sel_lower:
-                            home_outcome = outcome_data
-                        elif away_team and away_team.lower() in sel_lower:
-                            away_outcome = outcome_data
-                    
-                    # If we have both home and away, create YES/NO binary market
-                    if home_outcome and away_outcome:
-                        outcomes = [
-                            CanonicalOutcome(
-                                outcome_type=OutcomeType.YES,
-                                title=f"{home_team} to win",
-                                implied_probability=home_outcome["prob"],
-                                price=home_outcome["prob"],
-                                provider_outcome_id=home_outcome["outcome_id"]
-                            ),
-                            CanonicalOutcome(
-                                outcome_type=OutcomeType.NO,
-                                title=f"{away_team} to win",
-                                implied_probability=away_outcome["prob"],
-                                price=away_outcome["prob"],
-                                provider_outcome_id=away_outcome["outcome_id"]
-                            )
-                        ]
-                        
-                        market_obj = CanonicalMarket(
-                            market_id="",
-                            market_type=MarketType.YES_NO,
-                            outcomes=outcomes,
-                            provider_market_ids={PROVIDER_FANATICS: event_id}
-                        )
-                        event_obj.markets.append(market_obj)
-                    
-                    break  # Only process first moneyline market
-            
-            return event_obj if event_obj.markets else None
+    def normalize_market(self, market: Dict[str, Any]) -> Optional[CanonicalEvent]:
+        """Convert raw Polymarket market to canonical event.
         
-        except Exception as e:
-            LOGGER.warning(f"Failed to normalize Fanatics event: {e}")
-            return None
-    
-    def _parse_competitors(self, event: dict) -> tuple[str, str]:
-        """Extract home and away team names from Fanatics event."""
-        competitors = event.get("competitors") or []
-        if isinstance(competitors, list) and len(competitors) >= 2:
-            home = (
-                competitors[0].get("name")
-                or competitors[0].get("team_name")
-                or ""
-            )
-            away = (
-                competitors[1].get("name")
-                or competitors[1].get("team_name")
-                or ""
-            )
-            return (home[:50], away[:50])
-        
-        # Fallback: parse from name
-        name = event.get("name") or ""
-        if " vs " in name.lower():
-            parts = name.split(" vs ")
-            return (parts[0].strip()[:50], parts[1].strip()[:50])
-        
-        return ("", "")
-
-
-class ESPNNormalizer(BaseNormalizer):
-    """Normalize ESPN API responses to canonical schema."""
-    
-    def normalize_competition(self, competition: Dict[str, Any], sport: Sport) -> Optional[CanonicalEvent]:
-        """Convert ESPN competition to canonical event.
-        
-        Expected ESPN structure (from /odds endpoint):
+        Expected Polymarket market structure:
         {
-            "id": "...",
-            "competitors": [
-                {"id": "...", "team": {"abbreviation": "DET", ...}},
-                {"id": "...", "team": {"abbreviation": "CHI", ...}}
+            "question_id": "...",
+            "question": "Will ...",
+            "tokens": [
+                {"ticker": "YES", "price": 0.52},
+                {"ticker": "NO", "price": 0.48}
             ],
-            "startDate": "2026-01-04T...",
-            "odds": [
-                {"homeTeamOdds": {"value": 1.91}, "awayTeamOdds": {"value": 1.91}, ...}
-            ]
+            "end_date_iso": "2026-01-10T...",
+            "tags": ["sports", "nba"],
+            ...
         }
         """
         try:
-            comp_id = competition.get("id")
-            if not comp_id:
+            event_id = market.get("question_id") or market.get("condition_id") or market.get("id")
+            if not event_id:
                 return None
             
-            # Extract teams
-            competitors = competition.get("competitors", [])
-            if len(competitors) < 2:
-                return None
+            title = market.get("question") or market.get("title") or ""
             
-            home_team = self._extract_team_name(competitors[0])
-            away_team = self._extract_team_name(competitors[1])
+            # Extract tags to determine sport
+            tags = market.get("tags") or []
+            sport = self._map_sport_from_tags(tags)
+            
+            # Parse participants from title
+            home_team, away_team = self._parse_participants(title)
             
             # Start time
-            start_date = competition.get("startDate")
-            start_time = datetime.fromisoformat(start_date.replace("Z", "+00:00")) if start_date else datetime.utcnow()
+            start_time_str = market.get("end_date_iso")
+            start_time = datetime.fromisoformat(start_time_str) if start_time_str else datetime.utcnow()
             
-            # Create event - use placeholder ID, aggregator will compute canonical_event_id
-            # This allows proper cross-provider matching
             event = CanonicalEvent(
                 event_id="",  # PLACEHOLDER - aggregator will compute canonical_event_id()
                 sport=sport,
-                league="ESPN",
+                league="Polymarket",
                 home_team=home_team,
                 away_team=away_team,
                 start_time=start_time,
-                event_name=f"{away_team} @ {home_team}",
-                provider_event_ids={PROVIDER_ESPN: comp_id}
+                event_name=title,
+                provider_event_ids={PROVIDER_POLYMARKET: str(event_id)}
             )
             
-            # Extract markets from odds
-            odds_list = competition.get("odds", [])
-            for odds in odds_list:
-                market = self._parse_odds_to_market(odds, comp_id)
-                if market:
-                    event.markets.append(market)
-            
-            return event
-        
-        except Exception as e:
-            LOGGER.warning(f"Failed to normalize ESPN competition: {e}")
-            return None
-    
-    def _extract_team_name(self, competitor: Dict[str, Any]) -> str:
-        """Extract team name from competitor dict."""
-        team = competitor.get("team", {})
-        return normalize_team_name(team.get("name") or team.get("abbreviation") or "TBD")
-    
-    def _parse_odds_to_market(self, odds: Dict[str, Any], event_id: str) -> Optional[CanonicalMarket]:
-        """Parse ESPN odds object to market."""
-        try:
-            # Determine market type
-            market_type = MarketType.MONEYLINE  # Default
-            
-            # Moneyline odds
-            home_odds = odds.get("homeTeamOdds", {})
-            away_odds = odds.get("awayTeamOdds", {})
-            
-            home_value = float(home_odds.get("value", 0))
-            away_value = float(away_odds.get("value", 0))
-            
-            if home_value <= 0 or away_value <= 0:
-                return None
-            
-            home_prob = self.price_to_implied_probability(home_value, "decimal")
-            away_prob = self.price_to_implied_probability(away_value, "decimal")
-            
-            # Use provider's market ID as placeholder - aggregator will compute canonical key
-            market = CanonicalMarket(
-                market_id="",  # PLACEHOLDER - aggregator will compute canonical_market_key()
-                market_type=market_type,
-                outcomes=[
-                    CanonicalOutcome(
-                        outcome_type=OutcomeType.HOME,
-                        title="HOME",
-                        implied_probability=home_prob,
-                        price=home_value,
-                        provider_outcome_id="home"
-                    ),
-                    CanonicalOutcome(
-                        outcome_type=OutcomeType.AWAY,
-                        title="AWAY",
-                        implied_probability=away_prob,
-                        price=away_value,
-                        provider_outcome_id="away"
+            # Parse tokens to create YES/NO market
+            tokens = market.get("tokens") or []
+            if len(tokens) >= 2:
+                outcomes = []
+                for token in tokens:
+                    token_ticker = token.get("ticker", "").upper()
+                    token_price = float(token.get("price", 0.5))
+                    
+                    # Map ticker to outcome type
+                    if "YES" in token_ticker:
+                        outcome_type = OutcomeType.YES
+                    elif "NO" in token_ticker:
+                        outcome_type = OutcomeType.NO
+                    else:
+                        continue
+                    
+                    outcomes.append(
+                        CanonicalOutcome(
+                            outcome_type=outcome_type,
+                            title=token_ticker,
+                            implied_probability=token_price,
+                            price=token_price,
+                            provider_outcome_id=token.get("token_id") or token_ticker
+                        )
                     )
-                ],
-                provider_market_ids={PROVIDER_ESPN: event_id}
-            )
+                
+                if outcomes:
+                    market_obj = CanonicalMarket(
+                        market_id="",
+                        market_type=MarketType.YES_NO,
+                        outcomes=outcomes,
+                        provider_market_ids={PROVIDER_POLYMARKET: str(event_id)}
+                    )
+                    event.markets.append(market_obj)
             
-            return market
+            return event if event.markets else None
         
         except Exception as e:
-            LOGGER.warning(f"Failed to parse ESPN odds: {e}")
+            LOGGER.warning(f"Failed to normalize Polymarket market: {e}")
             return None
+    
+    def _map_sport_from_tags(self, tags: List[str]) -> Sport:
+        """Map Polymarket tags to Sport enum."""
+        tags_lower = [t.lower() for t in tags]
+        
+        if "nfl" in tags_lower or "football" in tags_lower:
+            return Sport.NFL
+        elif "nba" in tags_lower or "basketball" in tags_lower:
+            return Sport.NBA
+        elif "mlb" in tags_lower or "baseball" in tags_lower:
+            return Sport.MLB
+        elif "nhl" in tags_lower or "hockey" in tags_lower:
+            return Sport.NHL
+        elif "soccer" in tags_lower or "epl" in tags_lower:
+            return Sport.SOCCER
+        elif "politics" in tags_lower:
+            return Sport.POLITICS
+        elif "crypto" in tags_lower:
+            return Sport.CRYPTO
+        else:
+            return Sport.OTHER
+    
+    def _parse_participants(self, title: str) -> tuple[str, str]:
+        """Extract participants from Polymarket title."""
+        import re
+        
+        # Try "X vs Y" or "X v Y" pattern
+        vs_match = re.search(r"(.+?)\s+v[s]?\\.?\s+(.+)", title, re.IGNORECASE)
+        if vs_match:
+            return (vs_match.group(1).strip(), vs_match.group(2).strip())
+        
+        # Try "Will X beat Y" pattern
+        beat_match = re.search(r"Will\s+(.+?)\s+beat\s+(.+?)\??\s*$", title, re.IGNORECASE)
+        if beat_match:
+            return (beat_match.group(1).strip(), beat_match.group(2).strip())
+        
+        # Try "X to win" pattern
+        win_match = re.search(r"(.+?)\s+to\s+win", title, re.IGNORECASE)
+        if win_match:
+            return (win_match.group(1).strip(), "")
+        
+        return ("", "")

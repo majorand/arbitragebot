@@ -1,4 +1,4 @@
-"""Helper helpers for Kalshi ↔ Fanatics binary opportunities."""
+"""Helper functions for Kalshi ↔ Polymarket binary opportunities."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from arbitragebot.arbitrage.calculator import (
     is_arbitrage,
 )
 from arbitragebot.core.instruments import Instrument
-from arbitragebot.normalization.schemas import PROVIDER_FANATICS, PROVIDER_KALSHI
+from arbitragebot.normalization.schemas import PROVIDER_KALSHI, PROVIDER_POLYMARKET
 
-ALLOWED_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_FANATICS}
+ALLOWED_PROVIDERS = {PROVIDER_KALSHI, PROVIDER_POLYMARKET}
 DEFAULT_BANKROLL = 100.0
 
 

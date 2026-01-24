@@ -24,19 +24,18 @@ from arbitragebot.arbitrage import (
     ArbitrageOpportunity,
     ArbitrageLeg,
 )
+from arbitragebot.arbitrage.detector import ArbitrageDetector as NewArbitrageDetector, detect_arbitrage_opportunities
 from arbitragebot.config import StrategyConfig, TradingConfig, load_yaml
-from arbitragebot.data_sources.espn import ESPNDataSource
 from arbitragebot.data_sources.kalshi import KalshiDataSource
-from arbitragebot.data_sources.fanatics import FanaticsDataSource
+from arbitragebot.data_sources.polymarket import PolymarketDataSource
 from arbitragebot.execution.paper import PaperTradingEngine
 from arbitragebot.exchanges.kalshi import KalshiTradingClient
 from arbitragebot.normalization import (
     KalshiNormalizer,
-    FanaticsNormalizer,
-    ESPNNormalizer,
+    PolymarketNormalizer,
     EventMatcher,
     MarketMatcher,
-    ArbitrageDetector,
+    ArbitrageDetector as LegacyArbitrageDetector,
     CanonicalEvent,
     DetectedArbitrage,
     MatchedEventSet,
@@ -49,7 +48,7 @@ from arbitragebot.normalization.aggregator import (
     canonical_event_id,
     canonical_market_key,
 )
-from arbitragebot.normalization.schemas import PROVIDER_FANATICS, PROVIDER_KALSHI
+from arbitragebot.normalization.schemas import PROVIDER_KALSHI, PROVIDER_POLYMARKET
 from arbitragebot.schemas import NormalizedOdds
 from arbitragebot.strategies.arbitrage import CrossMarketArbitrageStrategy
 from arbitragebot.utils.odds import decimal_to_american
@@ -61,16 +60,16 @@ LOGGER = logging.getLogger(__name__)
 
 
 def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
-    """Collect odds from Kalshi, ESPN, Polymarket and surface both raw and arbitrage opportunities."""
+    """Collect odds from Kalshi and Polymarket for cross-market arbitrage detection."""
 
-    # Kalshi elections API endpoint (hardcoded - this is the public API)
+    # Kalshi prediction markets API
     kalshi = KalshiDataSource(
         api_key=os.getenv("KALSHI_API_KEY"),
     )
-    # ESPN uses public API, no config needed
-    espn = ESPNDataSource()
-    # Fanatics Sportsbook with public API
-    fanatics = FanaticsDataSource()
+    # Polymarket decentralized prediction markets
+    polymarket = PolymarketDataSource(
+        private_key=os.getenv("POLYMARKET_PRIVATE_KEY"),
+    )
 
     # Collect odds from all sources
     kalshi_odds: List[NormalizedOdds] = []
@@ -106,78 +105,29 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
         LOGGER.info("Skipping Kalshi: No API key configured (set KALSHI_API_KEY env var)")
         events_by_provider["kalshi"] = []
 
+    # Fetch Polymarket markets
     try:
-        LOGGER.info("Fetching ESPN events...")
-        espn_data = espn.get_upcoming_games("basketball", "nba")
-        other_odds.extend(espn_data)
-        LOGGER.info(f"Got {len(espn_data)} ESPN events")
+        LOGGER.info("Fetching Polymarket markets...")
+        polymarket_raw = polymarket.fetch_markets()
+        polymarket_odds = polymarket.normalize_markets(polymarket_raw)
+        other_odds.extend(polymarket_odds)
+        LOGGER.info(f"Got {len(polymarket_odds)} Polymarket markets")
         
-        # Normalize ESPN to canonical format
-        espn_normalizer = ESPNNormalizer()
-        espn_raw = espn.fetch_scoreboard("basketball", "nba")
-        espn_events = []
-        for comp in espn_raw:
+        # Normalize to canonical format for matching
+        polymarket_normalizer = PolymarketNormalizer()
+        polymarket_events = []
+        for market in polymarket_raw:
             try:
-                # Extract competitions from the event
-                for competition in comp.get("competitions", []):
-                    event = espn_normalizer.normalize_competition(competition, Sport.NBA)
-                    if event:
-                        espn_events.append(event)
+                event = polymarket_normalizer.normalize_market(market)
+                if event:
+                    polymarket_events.append(event)
             except Exception as e:
-                LOGGER.debug(f"Failed to normalize ESPN competition: {e}")
-        events_by_provider["espn"] = espn_events
-        LOGGER.info(f"Normalized {len(espn_events)} ESPN events to canonical format")
+                LOGGER.debug(f"Failed to normalize Polymarket market: {e}")
+        events_by_provider["polymarket"] = polymarket_events
+        LOGGER.info(f"Normalized {len(polymarket_events)} Polymarket markets to canonical format")
     except Exception as exc:
-        LOGGER.warning("Failed to fetch ESPN events: %s", exc)
-        events_by_provider["espn"] = []
-
-    # Optional: Fanatics Sportsbook (cached per instance to limit requests)
-    try:
-        LOGGER.info("Fetching Fanatics markets...")
-        fanatics_normalized = fanatics.fetch_markets()
-        LOGGER.info(f"Fanatics fetch returned {len(fanatics_normalized) if fanatics_normalized else 0} markets")
-        if fanatics_normalized:
-            other_odds.extend(fanatics_normalized)
-            LOGGER.info(f"Added {len(fanatics_normalized)} Fanatics markets to other_odds")
-            
-            # Also fetch raw markets for canonical normalization
-            fanatics_raw = fanatics.fetch_raw_markets()
-            
-            # Filter Fanatics markets by sport/league
-            allowed_fanatics_leagues = {"nfl", "nba", "nhl", "ncaaf", "ncaab", "mlb"}
-
-            fanatics_raw_filtered = []
-            dropped_league = 0
-            for event in fanatics_raw:
-                league = (event.get("league") or "").lower()
-                sport = (event.get("sport") or "").lower()
-                
-                if not any(l in (league + " " + sport) for l in allowed_fanatics_leagues):
-                    dropped_league += 1
-                    continue
-                
-                fanatics_raw_filtered.append(event)
-            
-            LOGGER.info(f"Fanatics filter dropped: league={dropped_league}")
-            LOGGER.info(f"Fanatics filter kept {len(fanatics_raw_filtered)}/{len(fanatics_raw)} markets")
-            
-            fanatics_normalizer = FanaticsNormalizer()
-            fanatics_events = []
-            for event in fanatics_raw_filtered:
-                try:
-                    canonical_event = fanatics_normalizer.normalize_market(event)
-                    if canonical_event:
-                        fanatics_events.append(canonical_event)
-                except Exception as e:
-                    LOGGER.debug(f"Failed to normalize Fanatics event: {e}")
-            events_by_provider["fanatics"] = fanatics_events
-            LOGGER.info(f"Normalized {len(fanatics_events)} Fanatics markets to canonical format")
-        else:
-            LOGGER.info("Fanatics returned empty list (may be rate-limited or no active markets)")
-            events_by_provider["fanatics"] = []
-    except Exception as exc:
-        LOGGER.error("Failed to fetch Fanatics markets: %s", exc, exc_info=True)
-        events_by_provider["fanatics"] = []
+        LOGGER.warning("Failed to fetch Polymarket markets: %s", exc)
+        events_by_provider["polymarket"] = []
 
     # Find arbitrage opportunities using aggregation pipeline
     detected_arbitrage = _find_arbitrage_with_normalization(
@@ -365,7 +315,7 @@ def _find_arbitrage_with_normalization(
         )
 
         LOGGER.info(
-            f"Found {len(opportunities)} Kalshi ↔ Fanatics opportunities >= {min_edge_pct}%"
+            f"Found {len(opportunities)} Kalshi ↔ Polymarket opportunities >= {min_edge_pct}%"
         )
         detected_arbs.extend(opportunities)
         
@@ -382,7 +332,7 @@ def _find_arbitrage_with_normalization(
 def _convert_detected_arbitrage_to_normalized_odds(
     arbs: List[BinaryArbitrageOpportunity | dict],
 ) -> List[NormalizedOdds]:
-    """Convert aggregated Kalshi ↔ Fanatics opportunities into NormalizedOdds for the UI."""
+    """Convert aggregated Kalshi ↔ Polymarket opportunities into NormalizedOdds for the UI."""
 
     def _get_attr(item, name, default=None):
         if isinstance(item, dict):
@@ -403,18 +353,18 @@ def _convert_detected_arbitrage_to_normalized_odds(
         expected_profit = _get_attr(arb, "expected_profit", 0.0)
 
         kalshi_leg = None
-        fanatics_leg = None
+        polymarket_leg = None
         for leg in (best_yes, best_no):
             provider = leg.get("provider")
             if provider == PROVIDER_KALSHI:
                 kalshi_leg = leg
-            elif provider == PROVIDER_FANATICS:
-                fanatics_leg = leg
+            elif provider == PROVIDER_POLYMARKET:
+                polymarket_leg = leg
 
         kalshi_price = float(kalshi_leg.get("price", 0.0)) if kalshi_leg else 0.0
-        fanatics_price = float(fanatics_leg.get("price", 0.0)) if fanatics_leg else 0.0
+        polymarket_price = float(polymarket_leg.get("price", 0.0)) if polymarket_leg else 0.0
         kalshi_decimal = float(kalshi_leg.get("decimal_odds", 0.0)) if kalshi_leg else 0.0
-        fanatics_decimal = float(fanatics_leg.get("decimal_odds", 0.0)) if fanatics_leg else 0.0
+        polymarket_decimal = float(polymarket_leg.get("decimal_odds", 0.0)) if polymarket_leg else 0.0
 
         opp = NormalizedOdds(
             sport="sports",
@@ -443,20 +393,20 @@ def _convert_detected_arbitrage_to_normalized_odds(
         opp.market = market_label
         opp.links = links
         opp.recommended_side = recommended_side
-        opp.reason = f"Kalshi vs Fanatics single-leg binary edge {edge_pct:.2f}%"
-        opp.recommendation = f"Buy {opp.selection} on Kalshi and hedge the opposite on Fanatics."
-        opp.venues = "Kalshi ↔ Fanatics"
+        opp.reason = f"Kalshi vs Polymarket single-leg binary edge {edge_pct:.2f}%"
+        opp.recommendation = f"Buy {opp.selection} on Kalshi and hedge the opposite on Polymarket."
+        opp.venues = "Kalshi ↔ Polymarket"
         opp.ev = float(expected_profit)
         opp.legs = _get_attr(arb, "legs") or []
 
         if kalshi_leg:
             opp.stake_kalshi = float(kalshi_leg.get("stake", 0.0))
-        if fanatics_leg:
-            opp.vs_source = PROVIDER_FANATICS
-            opp.vs_selection = fanatics_leg.get("selection") or "NO"
-            opp.vs_price = fanatics_price
-            opp.vs_american_odds = decimal_to_american(fanatics_decimal) if fanatics_decimal else None
-            opp.stake_other = float(fanatics_leg.get("stake", 0.0))
+        if polymarket_leg:
+            opp.vs_source = PROVIDER_POLYMARKET
+            opp.vs_selection = polymarket_leg.get("selection") or "NO"
+            opp.vs_price = polymarket_price
+            opp.vs_american_odds = decimal_to_american(polymarket_decimal) if polymarket_decimal else None
+            opp.stake_other = float(polymarket_leg.get("stake", 0.0))
 
         opp.market_id = _get_attr(arb, "event_id")
 

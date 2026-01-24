@@ -9,7 +9,7 @@ These tests verify that the extraction logic can handle:
 - Mixed team/player names
 """
 
-import pytest
+import pytest  # type: ignore  # If unresolved, run: pip install pytest
 from src.arbitragebot.core.instruments import InstrumentExtractor, PredicateType
 
 
@@ -298,7 +298,7 @@ class TestRealWorldExamples:
             inst = extractor.extract_instrument(
                 domain="nba",
                 text=part.strip(),
-                market_type=None
+                market_type="player_prop"
             )
             if inst:
                 instruments.append(inst)

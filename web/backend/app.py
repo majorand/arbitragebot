@@ -338,17 +338,15 @@ async def refresh_market_data() -> dict:
 
         if source_counts:
             kalshi_status = "connected" if source_counts.get("kalshi") else "disconnected"
-            espn_status = "connected" if source_counts.get("espn") else "disconnected"
-            fanatics_status = "connected" if source_counts.get("fanatics") else "disconnected"
+            polymarket_status = "connected" if source_counts.get("polymarket") else "disconnected"
 
             _set_health_status("kalshi", kalshi_status, 45)
-            _set_health_status("espn", espn_status, 120)
             _set_health_status(
-                "fanatics",
-                fanatics_status,
+                "polymarket",
+                polymarket_status,
                 150,
-                success_message="Fanatics feed back online",
-                failure_message="Fanatics feed returned no markets",
+                success_message="Polymarket feed back online",
+                failure_message="Polymarket feed returned no markets",
             )
     except Exception:
         pass
@@ -404,9 +402,7 @@ class TradingState:
         self.events = deque(maxlen=100)  # Keep last 100 events
         self.health = {
             "kalshi": {"status": "unknown", "latency": 0, "last_check": None},
-            "espn": {"status": "unknown", "latency": 0, "last_check": None},
-            "supabase": {"status": "unknown", "latency": 0, "last_check": None},
-            "fanatics": {"status": "unknown", "latency": 0, "last_check": None},
+            "polymarket": {"status": "unknown", "latency": 0, "last_check": None},
         }
         self.latest_data: List[NormalizedOdds] = []
         self.latest_refresh: Optional[datetime] = None
@@ -492,23 +488,14 @@ async def startup_event():
             STATE.update_health("kalshi", "disconnected", 0)
             STATE.add_event("Kalshi API key not found - set KALSHI_API_KEY env var", "warning")
         
-        # Check config file exists
-        sources_path = Path(os.getenv("SOURCES_CONFIG", "config/example_sources.yaml"))
-        if sources_path.exists():
-            STATE.update_health("espn", "connected", 120)
-            STATE.add_event("Data source configuration loaded", "success")
+        # Check Polymarket (optional)
+        polymarket_key = os.getenv("POLYMARKET_PRIVATE_KEY")
+        if polymarket_key:
+            _set_health_status("polymarket", "connected", 150)
+            STATE.add_event("Polymarket feed configured with authentication", "success")
         else:
-            STATE.update_health("espn", "disconnected", 0)
-            STATE.add_event(f"Config file not found: {sources_path}", "warning")
-
-        # Check Fanatics (optional)
-        fanatics_url = os.getenv("FANATICS_BASE_URL", "https://api.fanatics.com/api/v3")
-        if fanatics_url:
-            _set_health_status("fanatics", "connected", 150)
-            STATE.add_event("Fanatics feed configured", "success")
-        else:
-            _set_health_status("fanatics", "disconnected", 0)
-            STATE.add_event("Fanatics feed not configured", "warning")
+            _set_health_status("polymarket", "connected", 150)
+            STATE.add_event("Polymarket feed configured (public API)", "info")
         
         # Check Supabase (optional)
         if HAS_SUPABASE:
