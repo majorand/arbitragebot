@@ -188,6 +188,17 @@ class PredicateType(Enum):
     WIN_PLAYOFFS = "win_playoffs"
     COVER_SPREAD = "cover_spread"
     OVER_TOTAL = "over_total"
+    # Player props
+    PLAYER_POINTS_OVER = "player_points_over"
+    PLAYER_POINTS_UNDER = "player_points_under"
+    PLAYER_REBOUNDS_OVER = "player_rebounds_over"
+    PLAYER_ASSISTS_OVER = "player_assists_over"
+    PLAYER_PASSING_YARDS_OVER = "player_passing_yards_over"
+    PLAYER_RECEIVING_YARDS_OVER = "player_receiving_yards_over"
+    PLAYER_RUSHING_YARDS_OVER = "player_rushing_yards_over"
+    # Totals
+    GAME_TOTAL_OVER = "game_total_over"
+    GAME_TOTAL_UNDER = "game_total_under"
 
 
 PREDICATE_PATTERNS = {
@@ -199,6 +210,12 @@ PREDICATE_PATTERNS = {
     "moneyline": PredicateType.WIN_GAME,
     "win": PredicateType.WIN_GAME,
     "beat": PredicateType.WIN_GAME,
+    # Spreads
+    "cover": PredicateType.COVER_SPREAD,
+    "spread": PredicateType.COVER_SPREAD,
+    # Totals
+    "over": PredicateType.GAME_TOTAL_OVER,
+    "under": PredicateType.GAME_TOTAL_UNDER,
 }
 
 
@@ -309,13 +326,14 @@ class InstrumentExtractor:
         """
         Extract canonical subject from text.
         
-        For sports: Returns team name in canonical form.
+        For sports: Returns team name in canonical form or player name.
         Returns None if subject cannot be determined.
         
         Args:
             text: Raw text from market title/question
             home_team: Structured home team (ESPN only)
             away_team: Structured away team (ESPN only)
+            domain: Domain hint (nfl, nba, etc)
             
         Returns:
             Canonical subject or None
@@ -325,6 +343,13 @@ class InstrumentExtractor:
         
         domain_norm = str(domain).lower().strip() if domain else ""
 
+        # Try player prop first (more specific)
+        player = self._extract_player_name(text)
+        if player:
+            logger.info(f"Text subject (player): '{player}' from text: '{text[:100]}'")
+            return player
+
+        # Try team matchup or single team
         # IMPORTANT: Do not fall back to NFL aliases for unknown leagues.
         # That creates bogus matches (e.g. NHL "Blackhawks" -> NFL "Bears").
         alias_map = SPORT_TEAM_ALIASES.get(domain_norm)
@@ -439,13 +464,93 @@ class InstrumentExtractor:
 
         return None
     
+    def _extract_player_name(self, text: str) -> Optional[str]:
+        """
+        Extract player name from text.
+        
+        Patterns:
+        - "Devin Booker: 2+" → "devin_booker"
+        - "Puka Nacua: 80+" → "puka_nacua"
+        - "Matthew Stafford: 200+" → "matthew_stafford"
+        
+        Returns:
+            Canonical player name or None
+        """
+        # Pattern: Capitalized Name(s): threshold
+        match = re.search(r'([A-Z][a-z]+\s+[A-Z][a-z]+):\s*\d+', text)
+        if match:
+            name = match.group(1)
+            return name.lower().replace(" ", "_")
+        
+        # Pattern: Single player name without threshold (less preferred)
+        # Only match if it's a clear player name (capitalized)
+        match = re.search(r'yes\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*$', text)
+        if match:
+            name = match.group(1)
+            return name.lower().replace(" ", "_")
+        
+        return None
+    
+    def _extract_spread_info(self, text: str) -> Optional[tuple[str, float]]:
+        """
+        Extract spread amount from text.
+        
+        Patterns:
+        - "Phoenix wins by over 3.5 Points" → ("cover_spread", 3.5)
+        - "Michigan wins by over 15.5 Points" → ("cover_spread", 15.5)
+        
+        Returns:
+            Tuple of (spread_type, amount) or None
+        """
+        # Pattern: "wins by over X.X" or "wins by X.X"
+        match = re.search(r'wins?\s+by\s+(?:over|under)?\s*([\d.]+)', text, re.IGNORECASE)
+        if match:
+            try:
+                amount = float(match.group(1))
+                return ("cover_spread", amount)
+            except ValueError:
+                pass
+        
+        # Pattern: "covers X.X"
+        match = re.search(r'covers?\s+([\d.]+)', text, re.IGNORECASE)
+        if match:
+            try:
+                amount = float(match.group(1))
+                return ("cover_spread", amount)
+            except ValueError:
+                pass
+        
+        return None
+    
+    def _extract_total_info(self, text: str) -> Optional[tuple[str, float]]:
+        """
+        Extract game total amount from text.
+        
+        Patterns:
+        - "Over 228.5 points scored" → ("game_total", 228.5)
+        - "Under 209.5 points" → ("game_total", 209.5)
+        
+        Returns:
+            Tuple of (total_type, amount) or None
+        """
+        # Pattern: "Over/Under X.X points"
+        match = re.search(r'(over|under)\s+([\d.]+)(?:\s+points)?', text, re.IGNORECASE)
+        if match:
+            try:
+                amount = float(match.group(2))
+                return ("game_total", amount)
+            except ValueError:
+                pass
+        
+        return None
+    
     def extract_predicate(self, text: str, market_type: str = None) -> str:
         """
         Extract canonical predicate from text.
         
         Args:
             text: Raw text from market title/question
-            market_type: Market type hint (moneyline, spread, etc)
+            market_type: Market type hint (moneyline, spread, player_prop, total, etc)
             
         Returns:
             Canonical predicate
@@ -455,6 +560,52 @@ class InstrumentExtractor:
         # Explicit override: Super Bowl wins trump all other patterns
         if "super bowl" in text_lower or "superbowl" in text_lower:
             return PredicateType.WIN_SUPER_BOWL.value
+        
+        # Handle player props (specific patterns)
+        if market_type and "player_prop" in market_type.lower():
+            # Determine stat type from text
+            if "passing" in text_lower and "yard" in text_lower:
+                return PredicateType.PLAYER_PASSING_YARDS_OVER.value
+            elif "receiving" in text_lower and "yard" in text_lower:
+                return PredicateType.PLAYER_RECEIVING_YARDS_OVER.value
+            elif "rushing" in text_lower and "yard" in text_lower:
+                return PredicateType.PLAYER_RUSHING_YARDS_OVER.value
+            elif "rebound" in text_lower:
+                return PredicateType.PLAYER_REBOUNDS_OVER.value
+            elif "assist" in text_lower:
+                return PredicateType.PLAYER_ASSISTS_OVER.value
+            else:
+                # Default to points
+                return PredicateType.PLAYER_POINTS_OVER.value
+        
+        # Handle totals
+        if market_type and "total" in market_type.lower():
+            if "over" in text_lower:
+                return PredicateType.GAME_TOTAL_OVER.value
+            elif "under" in text_lower:
+                return PredicateType.GAME_TOTAL_UNDER.value
+        
+        # Handle spreads
+        if market_type and ("spread" in market_type.lower() or "cover" in market_type.lower()):
+            return PredicateType.COVER_SPREAD.value
+        
+        # Infer from text patterns (if no market_type hint)
+        if ":" in text and re.search(r':\s*\d+', text):
+            # Looks like player prop (e.g., "Booker: 25+")
+            if "passing" in text_lower and "yard" in text_lower:
+                return PredicateType.PLAYER_PASSING_YARDS_OVER.value
+            elif "receiving" in text_lower and "yard" in text_lower:
+                return PredicateType.PLAYER_RECEIVING_YARDS_OVER.value
+            else:
+                return PredicateType.PLAYER_POINTS_OVER.value
+        
+        if "over" in text_lower and "point" in text_lower:
+            return PredicateType.GAME_TOTAL_OVER.value
+        elif "under" in text_lower and "point" in text_lower:
+            return PredicateType.GAME_TOTAL_UNDER.value
+        
+        if "wins by" in text_lower or "cover" in text_lower:
+            return PredicateType.COVER_SPREAD.value
         
         # Check patterns in order of specificity
         for pattern, predicate_type in PREDICATE_PATTERNS.items():
@@ -604,6 +755,65 @@ class InstrumentExtractor:
         opportunities.sort(key=lambda x: x.roi, reverse=True)
         
         return opportunities
+    
+    def extract_instruments_batch(self,
+                                  domain: str,
+                                  text: str,
+                                  market_type: str = None,
+                                  home_team: str = None,
+                                  away_team: str = None,
+                                  event_name: str = None,
+                                  league: str = None,
+                                  event_date: str = None) -> List[Instrument]:
+        """
+        Extract multiple instruments from comma-separated text.
+        
+        Some market data provides comma-separated values like:
+        "yes Devin Booker: 2+,yes Devin Booker: 4+,yes Phoenix wins by over 3.5"
+        
+        This method splits and extracts each as a separate instrument.
+        
+        Args:
+            domain: Domain (nba, nfl, etc)
+            text: Comma-separated market text
+            market_type: Market type hint
+            home_team: Home team
+            away_team: Away team
+            event_name: Event name
+            league: League
+            event_date: Event date
+            
+        Returns:
+            List of extracted instruments
+        """
+        instruments = []
+        
+        # Split on commas and extract each part
+        parts = text.split(',')
+        
+        for part in parts:
+            part_stripped = part.strip()
+            if not part_stripped:
+                continue
+            
+            # Remove "yes" / "no" prefix if present
+            part_cleaned = re.sub(r'^(yes|no)\s+', '', part_stripped, flags=re.IGNORECASE)
+            
+            inst = self.extract_instrument(
+                domain=domain,
+                text=part_cleaned,
+                market_type=market_type,
+                home_team=home_team,
+                away_team=away_team,
+                event_name=event_name,
+                league=league,
+                event_date=event_date
+            )
+            
+            if inst:
+                instruments.append(inst)
+        
+        return instruments
     
     def validate_instrument(self, instrument: Instrument) -> bool:
         """
