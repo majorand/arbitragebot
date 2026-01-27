@@ -10,10 +10,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 import time
+
+try:
+    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+except ImportError as e:
+    raise ImportError(f"FastAPI is required but not installed. Install with: pip install fastapi uvicorn") from e
+
+from pydantic import BaseModel, Field
 
 try:
     from dotenv import load_dotenv
@@ -34,7 +39,7 @@ try:
     from arbitragebot.config import TradingConfig, load_yaml
     from arbitragebot.execution.paper import PaperTradingEngine
     from arbitragebot.exchanges.kalshi import KalshiTradingClient
-    from arbitragebot.main import collect_market_data
+    from arbitragebot.main import collect_market_data, _generate_mock_opportunities
     from arbitragebot.schemas import NormalizedOdds, OrderRequest
     HAS_ARBITRAGEBOT = True
 except ImportError:
