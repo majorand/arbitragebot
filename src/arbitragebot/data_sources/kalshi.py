@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Iterable, List, Optional
 import re
@@ -19,9 +20,9 @@ class KalshiDataSource:
     The API uses yes/no binary contracts with decimal odds (0-1 for implied probability).
     """
     
-    def __init__(self, api_key: str | None = None) -> None:
-        # Use the publicly accessible elections API endpoint
-        self.base_url = "https://api.elections.kalshi.com/trade-api/v2"
+    def __init__(self, api_key: str | None = None, base_url: str | None = None) -> None:
+        # Use the elections API endpoint as it resolves more reliably
+        self.base_url = base_url or os.getenv("KALSHI_API", "https://api.elections.kalshi.com/trade-api/v2")
         self.api_key = api_key
         self.session = build_session()
         LOGGER.info("Initialized Kalshi data source with base_url: %s", self.base_url)

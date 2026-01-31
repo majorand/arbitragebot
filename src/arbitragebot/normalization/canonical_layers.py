@@ -46,6 +46,8 @@ class InstrumentDomain(Enum):
     ENTERTAINMENT = "entertainment"
     WORLD = "world"
     ELECTIONS = "elections"
+    MACRO = "macro"
+    WEATHER = "weather"
     
     # Fallback
     OTHER = "other"

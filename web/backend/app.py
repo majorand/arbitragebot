@@ -41,6 +41,9 @@ try:
     from arbitragebot.exchanges.kalshi import KalshiTradingClient
     from arbitragebot.main import collect_market_data, _generate_mock_opportunities
     from arbitragebot.schemas import NormalizedOdds, OrderRequest
+    from arbitragebot.normalization import aggregate_all_providers, LayerArbitrageDetector
+    from arbitragebot.data_sources.kalshi import KalshiDataSource
+    from arbitragebot.data_sources.polymarket import PolymarketDataSource
     HAS_ARBITRAGEBOT = True
 except ImportError:
     HAS_ARBITRAGEBOT = False
@@ -324,13 +327,89 @@ async def refresh_market_data() -> dict:
     """Refresh market data cache by calling the arbitrage collector."""
 
     def _collect() -> List[NormalizedOdds]:
-        sources = _load_sources_config()
-        return collect_market_data(sources)
+        # 1. Fetch raw data from all sources
+        kalshi = KalshiDataSource(api_key=os.getenv("KALSHI_API_KEY"))
+        polymarket = PolymarketDataSource(private_key=os.getenv("POLYMARKET_PRIVATE_KEY"))
+
+        try:
+            kalshi_raw = kalshi.fetch_markets(limit=100)
+            poly_raw = polymarket.fetch_raw_markets()
+        except Exception as e:
+            print(f"Error fetching raw data: {e}")
+            return []
+
+        # 2. Run 5-layer aggregation
+        provider_data = {
+            "kalshi": kalshi_raw,
+            "polymarket": poly_raw
+        }
+
+        try:
+            views = aggregate_all_providers(provider_data)
+            detector = LayerArbitrageDetector(min_edge_pct=0.1)
+            opportunities = detector.detect(list(views.values()))
+
+            # 3. Convert opportunities to NormalizedOdds for frontend compatibility
+            results = []
+            for opp in opportunities:
+                # Create a synthetic NormalizedOdds object
+                n = NormalizedOdds(
+                    sport=opp.domain,
+                    league="Aggregated",
+                    event_id=opp.instrument_id,
+                    event_name=opp.event_name,
+                    start_time=opp.start_time or datetime.utcnow(),
+                    home_team=opp.subject,
+                    away_team="",
+                    market_type="binary",
+                    selection="yes",
+                    price=0.0, # Will be filled by edge info
+                    implied_probability=opp.implied_probability_sum,
+                    source="aggregated",
+                    last_updated=datetime.utcnow()
+                )
+                # Attach extra attributes used by frontend /stream
+                n.edge = opp.edge_pct
+                n.roi_percentage = opp.roi_pct
+                n.is_arbitrage = True
+                n.providers = opp.providers
+
+                # Extract leg info
+                if "YES" in opp.best_prices:
+                    prov, listing = opp.best_prices["YES"]
+                    n.price = listing.price
+                    if prov == "kalshi":
+                        n.recommended_stake_kalshi = 100.0 * (1.0 - listing.implied_probability) # Simplified
+                    else:
+                        n.vs_source = prov
+                        n.vs_price = listing.price
+                        n.recommended_stake_other = 100.0 * (1.0 - listing.implied_probability)
+
+                if "NO" in opp.best_prices:
+                    prov, listing = opp.best_prices["NO"]
+                    if not hasattr(n, 'vs_source'):
+                        n.vs_source = prov
+                        n.vs_price = listing.price
+                        n.recommended_stake_other = 100.0 * (1.0 - listing.implied_probability)
+
+                results.append(n)
+
+            # Also include some base odds for visibility
+            base_odds = collect_market_data(_load_sources_config())
+            return results + base_odds
+
+        except Exception as e:
+            print(f"Error in 5-layer pipeline: {e}")
+            import traceback
+            traceback.print_exc()
+            return collect_market_data(_load_sources_config())
 
     try:
         data = await asyncio.to_thread(_collect)
     except Exception as exc:  # pragma: no cover - external HTTP
         STATE.add_event(f"Market refresh failed: {str(exc)[:60]}", "warning")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(exc)}
 
     # Update feed health from returned sources (best-effort)
