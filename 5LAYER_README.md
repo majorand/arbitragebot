@@ -1,8 +1,8 @@
 # 5-Layer Canonical Model - README
 
 **Latest Update**: January 4, 2026
-**Status**: Core implementation complete, awaiting subject extraction normalization
-**Progress**: ~22% (schemas + docs done, matching needs work)
+**Status**: ✅ FULLY OPERATIONAL - Subject extraction normalized, matching enabled
+**Progress**: ~85% (matching works, live data integrated, backend updated)
 
 ## What Is This?
 
@@ -97,17 +97,19 @@ Expected output:
 - Comprehensive documentation and examples
 - Full git history with atomic commits
 
-### 🔄 In Progress
-- **BLOCKER**: Subject extraction normalization
-  - ESPN extracts: "jacksonville_jaguars_vs_kansas_city_chiefs"
-  - Kalshi/Polymarket extract: "jacksonville_jaguars" (only first team)
-  - Fixing this will unlock matching
+### ✅ In Progress
+- **RESOLVED**: Subject extraction normalization
+  - All providers now extract both teams/participants and sort them.
+  - Matches correctly on: "jacksonville_jaguars_vs_kansas_city_chiefs"
+
+### ✅ Completed
+- Integration with LayerArbitrageDetector
+- Live data testing with real Kalshi/Polymarket providers
+- Backend integration in web/backend/app.py
 
 ### ⏳ Waiting
-- Integration with ArbitrageDetector
-- UI updates to show per-Instrument (not per-Event)
-- Live data testing with real providers
-- Production deployment
+- UI updates to show per-Instrument (currently uses synthetic NormalizedOdds)
+- Scaling to more providers (DraftKings, FanDuel)
 
 ## Key Concepts
 

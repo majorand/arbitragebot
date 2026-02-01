@@ -184,54 +184,29 @@ class KalshiLayerMapper:
     def _extract_subject(self, title: str) -> str:
         """Extract subject from question - both teams in sorted order."""
         # "Will Jacksonville Jaguars beat Kansas City Chiefs in Super Bowl?"
-        # Extract: "Jacksonville Jaguars" and "Kansas City Chiefs"
-        # Return in sorted order for determinism
-        words = title.split()
+        text = title.lower()
+        if text.startswith("will "):
+            text = text[5:]
         
-        # Skip "Will" if present
-        start = 1 if words and words[0].lower() == "will" else 0
-        
-        # Collect words until we hit an action verb
-        team_words = []
-        for i in range(start, len(words)):
-            word = words[i].lower()
-            # Stop at action verbs
-            if word in ["beat", "defeat", "win", "lose", "in", "on", "at"]:
+        # Remove common suffixes
+        for suffix in [" beat ", " defeat ", " win ", " lose ", " vs ", " versus ", " @ "]:
+            if suffix in text:
+                parts = text.split(suffix)
+                # Clean up parts
+                p1 = parts[0].strip().replace(" ", "_")
+                p2 = parts[1].split(" in ")[0].split(" on ")[0].split(" at ")[0].strip("? ").replace(" ", "_")
+                if p1 and p2:
+                    return "_vs_".join(sorted([p1, p2]))[:100]
+
+        # Fallback to single subject
+        words = text.split()
+        subject_words = []
+        for word in words:
+            if word in ["in", "on", "at", "to", "by"]:
                 break
-            clean = word.rstrip("?,.:!;")
-            if clean and clean != "the":
-                team_words.append(clean)
+            subject_words.append(word.strip("?"))
         
-        # Now extract team names - should have at least one team
-        # Format as "team1_vs_team2" in sorted order
-        if team_words:
-            # Simple heuristic: split by prepositions
-            # "jacksonville jaguars" + "kansas city chiefs"
-            # Look for "and", "vs" patterns - if not found, try to split in half
-            subjects = []
-            current = []
-            
-            for word in team_words:
-                if word in ["and", "vs", "&"]:
-                    if current:
-                        subjects.append("_".join(current))
-                        current = []
-                else:
-                    current.append(word)
-            
-            if current:
-                subjects.append("_".join(current))
-            
-            # If we only got one subject, we need better extraction
-            if len(subjects) == 1:
-                # Heuristic: look for city names or assume it's one team
-                return subjects[0][:50]
-            else:
-                # Multiple subjects found - sort and join
-                subjects_sorted = sorted(subjects)
-                return "_vs_".join(subjects_sorted)[:50]
-        
-        return "unknown"
+        return "_".join(subject_words)[:100] if subject_words else "unknown"
     
     def _extract_predicate(self, title: str) -> str:
         """Extract predicate - use 'moneyline_winner' for consistency across providers."""
@@ -257,13 +232,21 @@ class PolymarketLayerMapper:
         
         # Extract Polymarket fields
         market_id = market_obj.get("id", "")
-        title = market_obj.get("title", "")
+        title = market_obj.get("question") or market_obj.get("title", "")
         description = market_obj.get("description", "")
         category = market_obj.get("category", "")  # Polymarket provides category like "NFL", "Politics"
-        outcomes = market_obj.get("outcomes", ["Yes", "No"])
-        creation_date = datetime.fromisoformat(
-            market_obj.get("creationDate", datetime.utcnow().isoformat())
-        )
+        # Handle both Gamma and CLOB API formats
+        outcomes_raw = market_obj.get("outcomes")
+        if not outcomes_raw and "tokens" in market_obj:
+            outcomes_raw = [t.get("outcome") for t in market_obj["tokens"]]
+
+        outcomes = outcomes_raw or ["Yes", "No"]
+
+        creation_date_raw = market_obj.get("creationDate") or market_obj.get("created_at") or datetime.utcnow().isoformat()
+        try:
+            creation_date = datetime.fromisoformat(creation_date_raw.replace("Z", "+00:00"))
+        except Exception:
+            creation_date = datetime.utcnow()
         
         # Determine domain from category (if provided) or infer from title
         if category:
@@ -343,8 +326,16 @@ class PolymarketLayerMapper:
         )
         
         # Layer 5: Provider Listing
-        # Use YES price from Polymarket
-        yes_price = market_obj.get("lastPrice", 0.5)
+        # Use YES price from Polymarket (handle various fields)
+        yes_price = market_obj.get("lastPrice")
+        if yes_price is None and "tokens" in market_obj:
+            for token in market_obj["tokens"]:
+                if token.get("outcome", "").upper() == "YES":
+                    yes_price = token.get("price")
+                    break
+
+        if yes_price is None:
+            yes_price = 0.5
         
         listing = CanonicalProviderListing(
             listing_id=market_id,
@@ -365,6 +356,28 @@ class PolymarketLayerMapper:
         """Infer domain from title/description."""
         text = (title + " " + description).lower()
         
+        # Check for sports keywords
+        sports_keywords = [
+            ("nfl", InstrumentDomain.NFL),
+            ("super bowl", InstrumentDomain.NFL),
+            ("football", InstrumentDomain.NFL),
+            ("nba", InstrumentDomain.NBA),
+            ("basketball", InstrumentDomain.NBA),
+            ("mlb", InstrumentDomain.MLB),
+            ("baseball", InstrumentDomain.MLB),
+            ("nhl", InstrumentDomain.NHL),
+            ("hockey", InstrumentDomain.NHL),
+            ("soccer", InstrumentDomain.SOCCER),
+            ("ufc", InstrumentDomain.UFC),
+            ("mma", InstrumentDomain.UFC),
+            ("tennis", InstrumentDomain.TENNIS),
+            ("golf", InstrumentDomain.GOLF),
+        ]
+
+        for keyword, domain in sports_keywords:
+            if keyword in text:
+                return domain
+
         if any(w in text for w in ["election", "president", "congress", "senate", "vote"]):
             return InstrumentDomain.POLITICS
         elif any(w in text for w in ["weather", "rain", "snow", "temperature"]):
@@ -378,30 +391,30 @@ class PolymarketLayerMapper:
     
     def _extract_subject(self, title: str) -> str:
         """Extract subject from title - use canonical form for sports matching."""
-        # "Will Jacksonville Jaguars beat Kansas City Chiefs in Super Bowl LIX?"
-        text = title.split("?")[0].strip()
-        if text.startswith("Will "):
+        # Same logic as Kalshi for consistency
+        text = title.lower()
+        if text.startswith("will "):
             text = text[5:]
-        if text.startswith("the "):
-            text = text[4:]
         
-        # Get words until "in/on/at/super/bowl" markers
+        # Remove common suffixes
+        for suffix in [" beat ", " defeat ", " win ", " lose ", " vs ", " versus ", " @ "]:
+            if suffix in text:
+                parts = text.split(suffix)
+                # Clean up parts
+                p1 = parts[0].strip().replace(" ", "_")
+                p2 = parts[1].split(" in ")[0].split(" on ")[0].split(" at ")[0].strip("? ").replace(" ", "_")
+                if p1 and p2:
+                    return "_vs_".join(sorted([p1, p2]))[:100]
+
+        # Fallback to single subject
         words = text.split()
         subject_words = []
         for word in words:
-            if word.lower() in ["beat", "vs", "win", "lose", "in", "on", "at", "super"]:
+            if word in ["in", "on", "at", "to", "by", "super"]:
                 break
-            clean = word.lower().rstrip("?,.:!;")
-            if clean:
-                subject_words.append(clean)
+            subject_words.append(word.strip("?"))
         
-        # Should have extracted team names
-        # Now sort them for determinism
-        if subject_words:
-            # Join and return
-            return "_".join(subject_words).lower()[:50]
-        
-        return "unknown"
+        return "_".join(subject_words)[:100] if subject_words else "unknown"
     
     def _extract_predicate(self, title: str, outcomes: List[str]) -> str:
         """Extract predicate - use 'moneyline_winner' for consistency."""
@@ -458,18 +471,19 @@ class ESPNLayerMapper:
         )
         
         # Layer 2: Outcome (HOME or AWAY)
+        # Use BINARY for consistency with prediction markets when it's a 2-way sports market
         outcome = CanonicalOutcome(
             outcome_id="",
             instrument_id=instrument.instrument_id,
-            outcome_type=OutcomeResolution.BINARY_INVERSE,  # Can be 2-way or 3-way with ties
+            outcome_type=OutcomeResolution.BINARY,
             states=[
-                CanonicalOutcomeState(state_id="HOME", display_name=home_team, resolves_to=True),
-                CanonicalOutcomeState(state_id="AWAY", display_name=away_team, resolves_to=False),
+                CanonicalOutcomeState(state_id="YES", display_name=home_team, resolves_to=True),
+                CanonicalOutcomeState(state_id="NO", display_name=away_team, resolves_to=False),
             ],
         )
         outcome.outcome_id = CanonicalOutcome.compute_id(
             instrument.instrument_id,
-            OutcomeResolution.BINARY_INVERSE.value,
+            OutcomeResolution.BINARY.value,
         )
         
         # Layer 3: Market Expression (ESPN Moneyline)

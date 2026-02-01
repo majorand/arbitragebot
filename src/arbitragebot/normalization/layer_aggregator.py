@@ -205,121 +205,6 @@ class LayerAggregator:
 
 
 # ============================================================================
-# Mapping Layer: Provider → 5 Canonical Layers
-# ============================================================================
-
-class ProviderToLayersMapper:
-    """
-    Abstract base: converts provider API objects into all 5 layers.
-    
-    Subclasses implement per-provider mapping logic.
-    """
-    
-    def map_to_layers(self, provider_obj: dict) -> Tuple[
-        CanonicalInstrument,
-        CanonicalOutcome,
-        CanonicalMarketExpression,
-        CanonicalEventContext,
-        CanonicalProviderListing,
-    ]:
-        """
-        Map a single provider object through all 5 layers.
-        
-        Returns: (instrument, outcome, expr, context, listing)
-        """
-        raise NotImplementedError("Subclasses must implement")
-
-
-# ============================================================================
-# Example: ESPN Mapper
-# ============================================================================
-
-class ESPNLayerMapper(ProviderToLayersMapper):
-    """Maps ESPN API objects to canonical layers."""
-    
-    def map_to_layers(self, provider_obj: dict) -> Tuple[
-        CanonicalInstrument,
-        CanonicalOutcome,
-        CanonicalMarketExpression,
-        CanonicalEventContext,
-        CanonicalProviderListing,
-    ]:
-        # Extract ESPN fields
-        league = provider_obj.get("league", "nba")
-        sport_map = {"nfl": "sports", "nba": "sports", "mlb": "sports"}
-        domain = sport_map.get(league, "sports")
-        
-        # Layer 1: Instrument (who wins this game)
-        home = provider_obj.get("home_team", "Unknown")
-        away = provider_obj.get("away_team", "Unknown")
-        instrument = CanonicalInstrument(
-            instrument_id="",  # Will be computed
-            domain="sports",
-            subject=home,
-            predicate=f"win_vs_{away}",
-        )
-        instrument.instrument_id = CanonicalInstrument.compute_id(
-            "sports", home, f"win_vs_{away}"
-        )
-        
-        # Layer 2: Outcome (HOME wins or AWAY wins)
-        outcome = CanonicalOutcome(
-            outcome_id="",
-            instrument_id=instrument.instrument_id,
-            outcome_type="moneyline",
-        )
-        outcome.outcome_id = CanonicalOutcome.compute_id(
-            instrument.instrument_id, "moneyline"
-        )
-        outcome.states = [
-            CanonicalOutcomeState(state_id="HOME", display_name=home, resolves_to=True),
-            CanonicalOutcomeState(state_id="AWAY", display_name=away, resolves_to=False),
-        ]
-        
-        # Layer 3: Market Expression (ESPN Moneyline)
-        expr = CanonicalMarketExpression(
-            market_expr_id="",
-            outcome_id=outcome.outcome_id,
-            expression_type="moneyline",
-        )
-        expr.market_expr_id = CanonicalMarketExpression.compute_id(
-            outcome.outcome_id, "moneyline"
-        )
-        
-        # Layer 4: Event Context
-        context = CanonicalEventContext(
-            context_id="",
-            instrument_id=instrument.instrument_id,
-            event_name=f"{away} @ {home}",
-            event_date=datetime.fromisoformat(provider_obj.get("start_time", "")),
-            location=provider_obj.get("venue", ""),
-            participants=[home, away],
-            league=league,
-        )
-        context.context_id = CanonicalEventContext.compute_id(
-            instrument.instrument_id,
-            context.event_date,
-            context.location,
-        )
-        
-        # Layer 5: Provider Listing (ESPN's odds)
-        listing = CanonicalProviderListing(
-            listing_id=provider_obj.get("id", ""),
-            provider_name="espn",
-            market_expr_id=expr.market_expr_id,
-            outcome_id=outcome.outcome_id,
-            instrument_id=instrument.instrument_id,
-            context_id=context.context_id,
-            price=provider_obj.get("moneyline", 0.0),
-            price_format="american",
-            implied_probability=provider_obj.get("implied_prob", 0.5),
-            raw_api_object=provider_obj,
-        )
-        
-        return instrument, outcome, expr, context, listing
-
-
-# ============================================================================
 # Example aggregation flow
 # ============================================================================
 
@@ -332,13 +217,16 @@ def aggregate_multi_provider_events(
     Input: {provider_name: [api_objects]}
     Output: {instrument_outcome_key: AggregatedInstrumentView}
     """
+    # Lazy import to avoid circular dependency
+    from .layer_mappers import ESPNLayerMapper, KalshiLayerMapper, PolymarketLayerMapper
+
     aggregator = LayerAggregator()
     
     # Mappers per provider
     mappers = {
         "espn": ESPNLayerMapper(),
-        # "kalshi": KalshiLayerMapper(),
-        # "polymarket": PolymarketLayerMapper(),
+        "kalshi": KalshiLayerMapper(),
+        "polymarket": PolymarketLayerMapper(),
     }
     
     # Process each provider's data
