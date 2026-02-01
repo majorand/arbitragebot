@@ -106,14 +106,27 @@ export function useRealTimeData() {
     store.setConnectionState('connecting');
     store.setConnectionError(null);
 
-    const protocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
-    const wsHost = API_BASE_URL.replace(/https?:\/\//, '');
+    // Intelligent URL detection for Jules' preview environment
+    let activeApiUrl = API_BASE_URL;
+    const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+
+    if (!isLocalhost && typeof window !== 'undefined' && window.location.hostname.includes('preview.jules.ai')) {
+      const currentHost = window.location.host;
+      if (currentHost.startsWith('3000-')) {
+        const backendHost = currentHost.replace('3000-', '8000-');
+        activeApiUrl = `${window.location.protocol}//${backendHost}`;
+        console.log('Detected Jules preview environment, using backend:', activeApiUrl);
+      }
+    }
+
+    const protocol = activeApiUrl.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = activeApiUrl.replace(/https?:\/\//, '');
     const wsUrl = `${protocol}://${wsHost}/stream`;
 
     console.log('Connecting to:', wsUrl);
 
     // First check if API is healthy
-    fetch(`${API_BASE_URL}/health`)
+    fetch(`${activeApiUrl}/health`)
       .then(res => {
         if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
         return res.json();

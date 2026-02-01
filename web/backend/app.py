@@ -105,13 +105,31 @@ allowed_origins = [
     for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",")
     if origin.strip()
 ]
+
+# Add support for Jules preview domains
+if any("preview.jules.ai" in o for o in allowed_origins) or os.getenv("ALLOW_JULES_PREVIEW") == "true":
+    # Use allow_origin_regex if needed, but for now we'll just be permissive in dev
+    pass
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=allowed_origins + ["*"] if os.getenv("DEBUG") == "True" else allowed_origins,
+    allow_credentials=os.getenv("DEBUG") != "True",
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# For Jules preview, we often need to be very permissive with origins
+@app.middleware("http")
+async def add_jules_preview_cors(request, call_next):
+    response = await call_next(request)
+    origin = request.headers.get("origin")
+    if origin and "preview.jules.ai" in origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 REFRESH_INTERVAL = int(os.getenv("MARKET_REFRESH_INTERVAL", "30"))
 

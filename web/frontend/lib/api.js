@@ -91,9 +91,21 @@ const MOCK_DATA = {
   },
 };
 
+function getActiveApiUrl() {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('preview.jules.ai')) {
+    const currentHost = window.location.host;
+    if (currentHost.startsWith('3000-')) {
+      const backendHost = currentHost.replace('3000-', '8000-');
+      return `${window.location.protocol}//${backendHost}`;
+    }
+  }
+  return API_BASE_URL;
+}
+
 async function request(path, options = {}) {
+  const activeUrl = getActiveApiUrl();
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${activeUrl}${path}`, {
       headers: defaultHeaders,
       ...options,
       signal: AbortSignal.timeout(3000), // 3 second timeout
@@ -148,8 +160,9 @@ export function fetchMetrics() {
 
 // WebSocket Connection Helper
 export function createWebSocketConnection(handlers = {}) {
-  const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
-  const wsHost = API_BASE_URL.replace(/https?:\/\//, '');
+  const activeUrl = getActiveApiUrl();
+  const wsProtocol = activeUrl.startsWith('https') ? 'wss' : 'ws';
+  const wsHost = activeUrl.replace(/https?:\/\//, '');
   const wsUrl = `${wsProtocol}://${wsHost}/ws`;
   
   try {
