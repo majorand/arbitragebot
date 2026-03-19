@@ -108,21 +108,25 @@ def collect_market_data(sources_config: dict) -> List[NormalizedOdds]:
     # Fetch Polymarket markets
     try:
         LOGGER.info("Fetching Polymarket markets...")
-        polymarket_raw = polymarket.fetch_markets()
-        polymarket_odds = polymarket.normalize_markets(polymarket_raw)
+        # fetch_markets() returns already-normalized NormalizedOdds
+        polymarket_odds = polymarket.fetch_markets()
         other_odds.extend(polymarket_odds)
         LOGGER.info(f"Got {len(polymarket_odds)} Polymarket markets")
-        
-        # Normalize to canonical format for matching
+
+        # Fetch raw data separately for canonical normalization pipeline
         polymarket_normalizer = PolymarketNormalizer()
         polymarket_events = []
-        for market in polymarket_raw:
-            try:
-                event = polymarket_normalizer.normalize_market(market)
-                if event:
-                    polymarket_events.append(event)
-            except Exception as e:
-                LOGGER.debug(f"Failed to normalize Polymarket market: {e}")
+        try:
+            polymarket_raw = polymarket.fetch_raw_markets()
+            for market in polymarket_raw:
+                try:
+                    event = polymarket_normalizer.normalize_market(market)
+                    if event:
+                        polymarket_events.append(event)
+                except Exception as e:
+                    LOGGER.debug(f"Failed to normalize Polymarket market: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Failed to fetch raw Polymarket markets for canonical pipeline: {e}")
         events_by_provider["polymarket"] = polymarket_events
         LOGGER.info(f"Normalized {len(polymarket_events)} Polymarket markets to canonical format")
     except Exception as exc:
@@ -500,55 +504,117 @@ def _find_arbitrage_opportunities(
 
 
 def _generate_mock_opportunities() -> List[NormalizedOdds]:
-    """Generate mock opportunities for testing when APIs aren't configured."""
+    """Generate realistic mock arbitrage opportunities for testing.
+
+    Each mock simulates a cross-platform arb between Kalshi and Polymarket
+    with proper edge calculation, stakes, and UI metadata so the dashboard
+    displays fully-formed opportunity cards.
+    """
     from datetime import datetime, timedelta
+
     now = datetime.utcnow()
-    
-    mock_data = [
-        NormalizedOdds(
-            sport="basketball",
-            league="nba",
-            event_id="MOCK-NBA-001",
-            event_name="MOCK-NBA-001",
-            start_time=now + timedelta(hours=2),
-            home_team="Los Angeles Lakers",
-            away_team="Boston Celtics",
-            market_type="moneyline",
-            selection="home",
-            price=1.85,
-            american_odds=-130,
-            implied_probability=0.54,
-            source="kalshi",
-            last_updated=now,
-        ),
-        NormalizedOdds(
-            sport="football",
-            league="nfl",
-            event_id="MOCK-NFL-002",
-            event_name="MOCK-NFL-002",
-            start_time=now + timedelta(hours=4),
-            home_team="Kansas City Chiefs",
-            away_team="Buffalo Bills",
-            market_type="moneyline",
-            selection="home",
-            price=2.04,
-            american_odds=-105,
-            implied_probability=0.49,
-            source="kalshi",
-            last_updated=now,
-        ),
+
+    # Realistic Kalshi ↔ Polymarket arbitrage scenarios
+    # Each tuple: (sport, league, event_name, home, away, kalshi_yes, poly_no, hours_out)
+    scenarios = [
+        ("politics", "US Elections", "Will the Democratic candidate win the 2026 midterm Senate?",
+         "Democrat", "Republican", 0.47, 0.48, 6),
+        ("basketball", "NBA", "Lakers vs Celtics - Lakers to Win",
+         "Los Angeles Lakers", "Boston Celtics", 0.44, 0.50, 2),
+        ("football", "NFL", "Chiefs vs Bills - Chiefs to Win",
+         "Kansas City Chiefs", "Buffalo Bills", 0.52, 0.43, 4),
+        ("politics", "US Politics", "Will there be a government shutdown by April 2026?",
+         "Yes", "No", 0.35, 0.58, 72),
+        ("crypto", "Markets", "Will Bitcoin exceed $150K by end of Q2 2026?",
+         "Yes", "No", 0.30, 0.62, 168),
+        ("basketball", "NBA", "Nuggets vs Suns - Nuggets to Win",
+         "Denver Nuggets", "Phoenix Suns", 0.55, 0.40, 3),
     ]
-    
-    # Add mock arbitrage metadata by attaching attributes
-    for idx, opp in enumerate(mock_data):
-        opp.edge = 1.5 + (idx * 0.3)  # 1.5%, 1.8%
-        opp.vs_source = "espn"
-        opp.vs_price = opp.price - 0.05  # Slightly worse odds on ESPN baseline
-        opp.vs_selection = opp.selection
-        opp.recommended_stake_kalshi = 100.0 * (idx + 1)
-        opp.recommended_stake_other = 95.0 * (idx + 1)
-        opp.vs_american_odds = -115 if idx == 0 else -110
-    
+
+    mock_data: List[NormalizedOdds] = []
+
+    for idx, (sport, league, event_name, home, away, k_yes, p_no, hrs) in enumerate(scenarios):
+        event_id = f"MOCK-{sport.upper()[:3]}-{idx+1:03d}"
+        start = now + timedelta(hours=hrs)
+
+        # Arbitrage math: sum of implied probs < 1.0
+        implied_sum = k_yes + p_no
+        if implied_sum >= 1.0:
+            # Nudge so there's always an edge in mock data
+            p_no = 0.99 - k_yes
+
+        implied_sum = k_yes + p_no
+        edge_pct = round((1.0 - implied_sum) * 100, 2)
+
+        # Decimal odds from probability
+        k_decimal = round(1.0 / k_yes, 4) if k_yes > 0 else 0
+        p_decimal = round(1.0 / p_no, 4) if p_no > 0 else 0
+
+        # Optimal stakes on $100 bankroll
+        total_inv = (1.0 / k_yes) + (1.0 / p_no)
+        stake_yes = round(100.0 * (1.0 / k_yes) / total_inv, 2)
+        stake_no = round(100.0 * (1.0 / p_no) / total_inv, 2)
+        expected_profit = round(100.0 * ((1.0 / implied_sum) - 1), 2)
+
+        # Build the Kalshi-side NormalizedOdds entry
+        opp = NormalizedOdds(
+            sport=sport,
+            league=league,
+            event_id=event_id,
+            event_name=event_name,
+            start_time=start,
+            home_team=home,
+            away_team=away,
+            market_type="binary",
+            selection="yes",
+            price=k_yes,
+            implied_probability=k_yes,
+            american_odds=decimal_to_american(k_decimal) if k_decimal > 1 else None,
+            source="kalshi",
+            last_updated=now,
+        )
+
+        # Attach arbitrage metadata for the UI
+        opp.is_arbitrage = True
+        opp.edge = edge_pct
+        opp.roi_percentage = edge_pct
+        opp.sources = ["kalshi", "polymarket"]
+        opp.providers = ["kalshi", "polymarket"]
+        opp.vs_source = "polymarket"
+        opp.vs_price = p_no
+        opp.vs_selection = "no"
+        opp.vs_american_odds = decimal_to_american(p_decimal) if p_decimal > 1 else None
+        opp.recommended_stake_kalshi = stake_yes
+        opp.stake_kalshi = stake_yes
+        opp.recommended_stake_other = stake_no
+        opp.stake_other = stake_no
+        opp.recommended_side = "yes"
+        opp.reason = f"Kalshi YES {k_yes:.0%} + Polymarket NO {p_no:.0%} = {implied_sum:.2%} (edge {edge_pct:.2f}%)"
+        opp.recommendation = f"Buy YES on Kalshi at {k_yes:.0%}, buy NO on Polymarket at {p_no:.0%}"
+        opp.venues = "Kalshi ↔ Polymarket"
+        opp.ev = expected_profit
+        opp.market = "YES_NO"
+        opp.best_yes = {
+            "provider": "kalshi",
+            "price": k_yes,
+            "decimal_odds": k_decimal,
+            "stake": stake_yes,
+            "selection": "YES",
+        }
+        opp.best_no = {
+            "provider": "polymarket",
+            "price": p_no,
+            "decimal_odds": p_decimal,
+            "stake": stake_no,
+            "selection": "NO",
+        }
+        opp.links = {
+            "kalshi": f"https://kalshi.com/search?query={event_name.replace(' ', '+')}",
+            "polymarket": f"https://polymarket.com/search?query={event_name.replace(' ', '+')}",
+        }
+
+        mock_data.append(opp)
+
     LOGGER.info(f"Generated {len(mock_data)} mock arbitrage opportunities for testing")
     return mock_data
 

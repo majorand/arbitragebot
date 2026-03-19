@@ -109,35 +109,52 @@ NBA_TEAM_ALIASES = {
     "nuggets": "denver_nuggets",
     "denver": "denver_nuggets",
     "pistons": "detroit_pistons",
+    "detroit": "detroit_pistons",
     "warriors": "golden_state_warriors",
     "golden state": "golden_state_warriors",
     "rockets": "houston_rockets",
+    "houston": "houston_rockets",
     "pacers": "indiana_pacers",
+    "indiana": "indiana_pacers",
     "clippers": "los_angeles_clippers",
     "la clippers": "los_angeles_clippers",
     "lakers": "los_angeles_lakers",
     "la lakers": "los_angeles_lakers",
     "grizzlies": "memphis_grizzlies",
+    "memphis": "memphis_grizzlies",
     "heat": "miami_heat",
+    "miami": "miami_heat",
     "bucks": "milwaukee_bucks",
+    "milwaukee": "milwaukee_bucks",
     "timberwolves": "minnesota_timberwolves",
     "wolves": "minnesota_timberwolves",
     "pelicans": "new_orleans_pelicans",
+    "new orleans": "new_orleans_pelicans",
     "knicks": "new_york_knicks",
     "ny knicks": "new_york_knicks",
     "thunder": "oklahoma_city_thunder",
     "oklahoma city": "oklahoma_city_thunder",
+    "okc": "oklahoma_city_thunder",
     "magic": "orlando_magic",
+    "orlando": "orlando_magic",
     "76ers": "philadelphia_76ers",
     "sixers": "philadelphia_76ers",
+    "philadelphia": "philadelphia_76ers",
     "suns": "phoenix_suns",
+    "phoenix": "phoenix_suns",
     "trail blazers": "portland_trail_blazers",
     "blazers": "portland_trail_blazers",
+    "portland": "portland_trail_blazers",
     "kings": "sacramento_kings",
+    "sacramento": "sacramento_kings",
     "spurs": "san_antonio_spurs",
+    "san antonio": "san_antonio_spurs",
     "raptors": "toronto_raptors",
+    "toronto": "toronto_raptors",
     "jazz": "utah_jazz",
+    "utah": "utah_jazz",
     "wizards": "washington_wizards",
+    "washington": "washington_wizards",
 }
 
 
@@ -390,6 +407,12 @@ class InstrumentExtractor:
             alias_map = UNKNOWN_SPORT_TEAM_ALIASES
 
         if not alias_map:
+            # No alias map for this domain - try extracting a team name from
+            # common phrases like "X wins by" or "Will X win"
+            fallback = self._extract_team_from_phrase(text)
+            if fallback:
+                logger.info(f"Text subject (phrase): '{fallback}' from text: '{text[:100]}'")
+                return fallback
             logger.warning(f"No subject found in text: '{text[:100]}'")
             return None
         
@@ -408,10 +431,47 @@ class InstrumentExtractor:
             result = found_teams[0]
             logger.info(f"Text subject (single): '{result}' from text: '{text[:100]}'")
             return result
-        
+
+        # Last resort: extract team name from common phrases
+        fallback = self._extract_team_from_phrase(text)
+        if fallback:
+            logger.info(f"Text subject (phrase fallback): '{fallback}' from text: '{text[:100]}'")
+            return fallback
+
         logger.warning(f"No subject found in text: '{text[:100]}'")
         return None
     
+    def _extract_team_from_phrase(self, text: str) -> Optional[str]:
+        """Extract a team/entity name from common phrasing when no alias map matches.
+
+        Patterns handled:
+        - "X wins by over ..."  → X
+        - "Will X win ..."      → X
+        - "X to win ..."        → X
+        - "X covers ..."        → X
+        - "Over/Under N points" → game_total (no team)
+        - "Over/Under N"        → game_total (no team, no keyword)
+        """
+        # Try team-based patterns first (more specific than bare totals)
+        patterns = [
+            r"(?:yes\s+)?([A-Z][a-zA-Z\s]+?)\s+wins?\b",
+            r"Will\s+(?:the\s+)?([A-Z][a-zA-Z\s]+?)\s+win",
+            r"([A-Z][a-zA-Z\s]+?)\s+to\s+win",
+            r"([A-Z][a-zA-Z\s]+?)\s+covers?\b",
+        ]
+        for pat in patterns:
+            m = re.search(pat, text)
+            if m:
+                name = m.group(1).strip()
+                if name and len(name) > 1:
+                    return name.lower().replace(" ", "_")
+
+        # Handle totals (no team involved) - match with or without "points" keyword
+        if re.search(r"\b(?:over|under)\s+[\d.]+", text, re.IGNORECASE):
+            return "game_total"
+
+        return None
+
     def _normalize_team_name(self, team: str, alias_map: Optional[Dict[str, str]]) -> str:
         """Normalize a team name to canonical form."""
         team_lower = team.lower().strip()

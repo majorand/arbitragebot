@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://arbitragebot-api.onrender.com";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
@@ -9,85 +9,55 @@ const defaultHeaders = {
 const MOCK_DATA = {
   odds: [
     {
-      market_id: "KAL-SUPERBOWL-58",
-      event_name: "Super Bowl 58 Winner",
-      implied_odds_yes: 0.48,
-      implied_odds_no: 0.52,
-      edge: 0.032,
+      market_id: "MOCK-POL-001",
+      event_name: "Will the Democratic candidate win the 2026 midterm Senate?",
+      edge: 5.32,
       recommended_side: "yes",
       venue: "kalshi",
-      sport: "nfl",
-      confidence: 0.89,
+      sport: "POLITICS",
+      league: "US Elections",
+      providers: ["kalshi", "polymarket"],
+      sources: ["kalshi", "polymarket"],
+      is_arbitrage: true,
+      best_yes: { provider: "kalshi", price: 0.47, decimal_odds: 2.1277, stake: 46.83 },
+      best_no: { provider: "polymarket", price: 0.48, decimal_odds: 2.0833, stake: 53.17 },
+      roi_percentage: 5.32,
       created_at: new Date().toISOString(),
     },
     {
-      market_id: "PM-NEXT-HITTER-HR",
-      event_name: "Next Batter Hits HR",
-      implied_odds_yes: 0.18,
-      implied_odds_no: 0.82,
-      edge: 0.021,
-      recommended_side: "no",
-      venue: "polymarket",
-      sport: "mlb",
-      confidence: 0.76,
+      market_id: "MOCK-NBA-002",
+      event_name: "Lakers vs Celtics - Lakers to Win",
+      edge: 6.82,
+      recommended_side: "yes",
+      venue: "kalshi",
+      sport: "BASKETBALL",
+      league: "NBA",
+      providers: ["kalshi", "polymarket"],
+      sources: ["kalshi", "polymarket"],
+      is_arbitrage: true,
+      best_yes: { provider: "kalshi", price: 0.44, decimal_odds: 2.2727, stake: 43.40 },
+      best_no: { provider: "polymarket", price: 0.50, decimal_odds: 2.0, stake: 56.60 },
+      roi_percentage: 6.82,
       created_at: new Date(Date.now() - 60000).toISOString(),
     },
   ],
   mode: { mode: "paper" },
-  trades: [
-    {
-      trade_id: "TRD-001",
-      market_id: "KAL-SUPERBOWL-58",
-      side: "yes",
-      stake: 250.0,
-      fill_price: 0.48,
-      pnl: 12.50,
-      status: "closed",
-      venue: "kalshi",
-      created_at: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      trade_id: "TRD-002",
-      market_id: "PM-NEXT-HITTER-HR",
-      side: "no",
-      stake: 150.0,
-      fill_price: 0.82,
-      pnl: 18.75,
-      status: "closed",
-      venue: "polymarket",
-      created_at: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ],
-  positions: [
-    {
-      position_id: "POS-001",
-      market_id: "KAL-SUPERBOWL-58",
-      event_name: "Super Bowl 58 Winner",
-      side: "yes",
-      quantity: 1.0,
-      entry_price: 0.48,
-      current_price: 0.52,
-      market_value: 520.0,
-      unrealized_pnl: 40.0,
-      percentage_change: 8.33,
-      venue: "kalshi",
-      opened_at: new Date(Date.now() - 7200000).toISOString(),
-    },
-  ],
+  trades: [],
+  positions: [],
   metrics: {
-    total_trades: 342,
-    cash_balance: 8750.25,
-    open_positions: 1,
-    portfolio_value: 9270.25,
-    total_pnl: 520.25,
-    win_rate: 0.62,
-    sharpe_ratio: 1.45,
-    max_drawdown: 0.08,
+    total_trades: 0,
+    cash_balance: 10000.0,
+    open_positions: 0,
+    portfolio_value: 10000.0,
+    total_pnl: 0.0,
+    win_rate: 0,
+    sharpe_ratio: 0,
+    max_drawdown: 0,
   },
   health: {
-    kalshi: { status: "healthy", last_check: new Date().toISOString() },
-    polymarket: { status: "healthy", last_check: new Date().toISOString() },
-    supabase: { status: "healthy", last_check: new Date().toISOString() },
+    kalshi: { status: "connected", last_check: new Date().toISOString() },
+    polymarket: { status: "connected", last_check: new Date().toISOString() },
+    supabase: { status: "disconnected", last_check: new Date().toISOString() },
   },
 };
 
@@ -128,9 +98,12 @@ export function updateMode(mode) {
 }
 
 export function submitTrade(tradeData) {
-  return request("/trades", {
+  return request("/trade", {
     method: "POST",
-    body: JSON.stringify(tradeData)
+    body: JSON.stringify({
+      event_id: tradeData.market_id,
+      stake: tradeData.stake,
+    })
   }).then(data => data || { status: "simulated" });
 }
 

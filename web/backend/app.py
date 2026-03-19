@@ -45,7 +45,7 @@ try:
 except ImportError:
     HAS_ARBITRAGEBOT = False
     import yaml
-    
+
     class NormalizedOdds:
         def __init__(self, **kwargs):
             for k, v in kwargs.items():
@@ -62,7 +62,10 @@ except ImportError:
 
     def collect_market_data(sources):
         return []
-    
+
+    def _generate_mock_opportunities():
+        return []
+
     def load_yaml(path):
         """Fallback YAML loader when arbitragebot module not available"""
         with Path(path).open("r", encoding="utf-8") as handle:
@@ -357,12 +360,14 @@ async def refresh_market_data() -> dict:
         pass
 
     # Persist odds to Supabase when available
-    client = get_supabase_client()
-    if client and data:
-        try:
-            store_odds(client, data)
-        except Exception as exc:  # pragma: no cover - external HTTP
-            STATE.add_event(f"Supabase store failed: {str(exc)[:60]}", "warning")
+    client = None
+    if HAS_SUPABASE:
+        client = get_supabase_client()
+        if client and data:
+            try:
+                store_odds(client, data)
+            except Exception as exc:  # pragma: no cover - external HTTP
+                STATE.add_event(f"Supabase store failed: {str(exc)[:60]}", "warning")
     _check_supabase_connection(client)
     STATE.update_market_data(data)
     timestamp = STATE.latest_refresh.isoformat() if STATE.latest_refresh else None
@@ -530,10 +535,26 @@ def _pick_kalshi_odds(data: List[NormalizedOdds], event_id: str) -> NormalizedOd
 async def list_odds() -> List[dict]:
     sources_config = _load_sources_config()
     data = collect_market_data(sources_config)
-    client = get_supabase_client()
-    store_odds(client, data)
+    try:
+        client = get_supabase_client()
+        if client and HAS_SUPABASE:
+            store_odds(client, data)
+    except Exception as e:
+        print(f"Supabase store_odds failed (non-fatal): {e}")
     STATE.add_event(f"Fetched odds for {len(data)} markets", "info")
-    return [asdict(item) for item in data]
+    # Use vars() to capture both dataclass fields and dynamically attached attrs
+    results = []
+    for item in data:
+        try:
+            row = asdict(item)
+        except Exception:
+            row = vars(item) if hasattr(item, '__dict__') else {"event_id": str(item)}
+        # Serialize datetime objects
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
+        results.append(row)
+    return results
 
 
 @app.post("/mode")
@@ -673,9 +694,10 @@ async def refresh_endpoint() -> Dict[str, Any]:
 @app.get("/health")
 async def health_status() -> Dict:
     """Return health status of all data feeds"""
-    _set_health_status("espn", "connected", 120)
     kalshi_status = "connected" if os.getenv("KALSHI_API_KEY") else "disconnected"
     _set_health_status("kalshi", kalshi_status, 45)
+    # Polymarket is always accessible (public API)
+    _set_health_status("polymarket", "connected", 150)
     _check_supabase_connection()
     return STATE.health
 

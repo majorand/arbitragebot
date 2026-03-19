@@ -5,7 +5,7 @@ import { useState } from 'react';
  * @typedef {import('../lib/opportunityTypes').BinaryOpportunity} BinaryOpportunity
  */
 
-const REQUIRED_PROVIDERS = ['kalshi', 'fanatics'];
+const REQUIRED_PROVIDERS = ['kalshi', 'polymarket'];
 
 const isStrictBinaryOpportunity = (opp) => {
   const providers = opp?.providers || opp?.sources || [];
@@ -151,7 +151,7 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                               Best YES: <span className="font-semibold">{bestYes.provider}</span> @ <span className="font-bold">{bestYes.price.toFixed(3)}</span>
                             </p>
                           )}
-                          {opp.links && (opp.links.kalshi || opp.links.fanatics) && (
+                          {opp.links && (opp.links.kalshi || opp.links.polymarket) && (
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               {opp.links.kalshi && (
                                 <a
@@ -163,14 +163,14 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
                                   Kalshi <ExternalLink className="w-3 h-3" />
                                 </a>
                               )}
-                              {opp.links.fanatics && (
+                              {opp.links.polymarket && (
                                 <a
-                                  href={opp.links.fanatics}
+                                  href={opp.links.polymarket}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="text-[11px] text-purple-300 font-semibold flex items-center gap-1"
                                 >
-                                  Fanatics <ExternalLink className="w-3 h-3" />
+                                  Polymarket <ExternalLink className="w-3 h-3" />
                                 </a>
                               )}
                             </div>

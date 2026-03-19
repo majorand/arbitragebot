@@ -5,7 +5,7 @@ import { API_BASE_URL } from '../lib/api';
 export default function HealthMonitor() {
   const [health, setHealth] = useState({
     kalshi: { status: 'connecting', latency: 0 },
-    espn: { status: 'connecting', latency: 0 },
+    polymarket: { status: 'connecting', latency: 0 },
     supabase: { status: 'connecting', latency: 0 },
   });
 
@@ -44,8 +44,7 @@ export default function HealthMonitor() {
 
   const feeds = [
     { name: 'Kalshi API', key: 'kalshi', health: health.kalshi },
-    { name: 'ESPN Feed', key: 'espn', health: health.espn },
-    { name: 'Fanatics Feed', key: 'fanatics', health: health.fanatics },
+    { name: 'Polymarket Feed', key: 'polymarket', health: health.polymarket },
     { name: 'Supabase DB', key: 'supabase', health: health.supabase },
   ];
 

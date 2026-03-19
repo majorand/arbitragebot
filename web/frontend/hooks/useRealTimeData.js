@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import useBotStore from '../store/botStore';
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://arbitragebot-api.onrender.com';
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export function useRealTimeData() {
   const wsRef = useRef(null);

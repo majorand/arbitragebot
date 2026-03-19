@@ -27,7 +27,7 @@ export default function BestOpportunity({ opportunity, onExecute, onSkip, onIgno
           </h2>
           <p className="text-sm text-gray-400 mt-1">Execute in {isLive ? 'LIVE' : 'PAPER'} mode</p>
           <p className="text-xs text-blue-200 mt-1 uppercase tracking-widest">
-            {opportunity.providers?.map((p) => p?.toUpperCase()).join(' ↔ ') || 'KALSHI ↔ FANATICS'}
+            {opportunity.providers?.map((p) => p?.toUpperCase()).join(' ↔ ') || 'KALSHI ↔ POLYMARKET'}
           </p>
         </div>
         <div className="text-right">
@@ -80,7 +80,7 @@ export default function BestOpportunity({ opportunity, onExecute, onSkip, onIgno
         <p className="text-xs text-gray-400">{opportunity.reason || 'Implied probability difference detected'}</p>
       </div>
 
-      {opportunity.links && (opportunity.links.kalshi || opportunity.links.fanatics) && (
+      {opportunity.links && (opportunity.links.kalshi || opportunity.links.polymarket) && (
         <div className="flex flex-wrap gap-3 text-xs text-gray-300 mb-6">
           {opportunity.links.kalshi && (
             <a
@@ -92,14 +92,14 @@ export default function BestOpportunity({ opportunity, onExecute, onSkip, onIgno
               Kalshi <ExternalLink className="w-3 h-3" />
             </a>
           )}
-          {opportunity.links.fanatics && (
+          {opportunity.links.polymarket && (
             <a
-              href={opportunity.links.fanatics}
+              href={opportunity.links.polymarket}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 text-purple-300 font-semibold"
             >
-              Fanatics <ExternalLink className="w-3 h-3" />
+              Polymarket <ExternalLink className="w-3 h-3" />
             </a>
           )}
         </div>
