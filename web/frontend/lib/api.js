@@ -23,6 +23,10 @@ const MOCK_DATA = {
       best_no: { provider: "polymarket", price: 0.48, decimal_odds: 2.0833, stake: 53.17 },
       roi_percentage: 5.32,
       created_at: new Date().toISOString(),
+      links: {
+        kalshi: "https://kalshi.com/markets/democratic-senate",
+        polymarket: "https://polymarket.com/search?query=democratic+senate",
+      },
     },
     {
       market_id: "MOCK-NBA-002",
@@ -39,25 +43,36 @@ const MOCK_DATA = {
       best_no: { provider: "polymarket", price: 0.50, decimal_odds: 2.0, stake: 56.60 },
       roi_percentage: 6.82,
       created_at: new Date(Date.now() - 60000).toISOString(),
+      links: {
+        kalshi: "https://kalshi.com/markets/lakers-celtics",
+        polymarket: "https://polymarket.com/search?query=lakers+celtics",
+      },
+    },
+    {
+      market_id: "MOCK-CRYPTO-003",
+      event_name: "Will Bitcoin exceed $150K by end of 2026?",
+      edge: 3.91,
+      recommended_side: "no",
+      venue: "polymarket",
+      sport: "CRYPTO",
+      league: "Markets",
+      providers: ["kalshi", "polymarket"],
+      sources: ["kalshi", "polymarket"],
+      is_arbitrage: true,
+      best_yes: { provider: "polymarket", price: 0.52, decimal_odds: 1.923, stake: 51.20 },
+      best_no: { provider: "kalshi", price: 0.44, decimal_odds: 2.273, stake: 48.80 },
+      roi_percentage: 3.91,
+      created_at: new Date(Date.now() - 120000).toISOString(),
+      links: {
+        kalshi: "https://kalshi.com/markets/bitcoin-150k",
+        polymarket: "https://polymarket.com/search?query=bitcoin+150k",
+      },
     },
   ],
-  mode: { mode: "paper" },
-  trades: [],
-  positions: [],
-  metrics: {
-    total_trades: 0,
-    cash_balance: 10000.0,
-    open_positions: 0,
-    portfolio_value: 10000.0,
-    total_pnl: 0.0,
-    win_rate: 0,
-    sharpe_ratio: 0,
-    max_drawdown: 0,
-  },
   health: {
-    kalshi: { status: "connected", last_check: new Date().toISOString() },
-    polymarket: { status: "connected", last_check: new Date().toISOString() },
-    supabase: { status: "disconnected", last_check: new Date().toISOString() },
+    kalshi: { status: "connected", last_check: new Date().toISOString(), latency: 45 },
+    polymarket: { status: "connected", last_check: new Date().toISOString(), latency: 62 },
+    supabase: { status: "disconnected", last_check: new Date().toISOString(), latency: 0 },
   },
 };
 
@@ -66,19 +81,18 @@ async function request(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: defaultHeaders,
       ...options,
-      signal: AbortSignal.timeout(3000), // 3 second timeout
+      signal: AbortSignal.timeout(3000),
     });
-    
+
     if (!response.ok) {
       throw new Error(`API Error: ${response.status}`);
     }
-    
+
     const text = await response.text();
     return text ? JSON.parse(text) : {};
   } catch (err) {
-    // Return mock data on error (ensures dashboard is never blank)
     console.warn(`API request failed for ${path}, using mock data:`, err.message);
-    return null; // Caller will use mock data
+    return null;
   }
 }
 
@@ -86,37 +100,8 @@ export function fetchOdds() {
   return request("/odds").then(data => data || MOCK_DATA.odds);
 }
 
-export function fetchMode() {
-  return request("/mode").then(data => data || MOCK_DATA.mode);
-}
-
-export function updateMode(mode) {
-  return request("/mode", {
-    method: "POST",
-    body: JSON.stringify({ mode })
-  }).then(data => data || { mode });
-}
-
-export function submitTrade(tradeData) {
-  return request("/trade", {
-    method: "POST",
-    body: JSON.stringify({
-      event_id: tradeData.market_id,
-      stake: tradeData.stake,
-    })
-  }).then(data => data || { status: "simulated" });
-}
-
-export function fetchTrades() {
-  return request("/trades").then(data => data || MOCK_DATA.trades);
-}
-
-export function fetchPositions() {
-  return request("/positions").then(data => data || MOCK_DATA.positions);
-}
-
-export function fetchMetrics() {
-  return request("/metrics").then(data => data || MOCK_DATA.metrics);
+export function fetchHealth() {
+  return request("/health").then(data => data || MOCK_DATA.health);
 }
 
 // WebSocket Connection Helper
@@ -124,7 +109,7 @@ export function createWebSocketConnection(handlers = {}) {
   const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
   const wsHost = API_BASE_URL.replace(/https?:\/\//, '');
   const wsUrl = `${wsProtocol}://${wsHost}/ws`;
-  
+
   try {
     const ws = new WebSocket(wsUrl);
 
@@ -158,4 +143,3 @@ export function createWebSocketConnection(handlers = {}) {
     return null;
   }
 }
-

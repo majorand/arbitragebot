@@ -11,11 +11,11 @@ export function useRealTimeData() {
   const heartbeatTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
-  const MAX_RECONNECT_ATTEMPTS = 50; // Increased from 10 to 50
-  const BASE_RECONNECT_DELAY = 2000; // Increased from 1000 to 2000ms
+  const MAX_RECONNECT_ATTEMPTS = 50;
+  const BASE_RECONNECT_DELAY = 2000;
   const HEARTBEAT_TIMEOUT = 30000;
 
-  // Handle incoming stream messages
+  // Handle incoming stream messages (display-only: opportunities + health)
   const handleStreamMessage = useCallback((data) => {
     if (!data || !mountedRef.current) return;
 
@@ -28,21 +28,6 @@ export function useRealTimeData() {
     if (data.opportunity) {
       store.updateOpportunity(data.opportunity.market_id, data.opportunity);
     }
-    if (data.positions && Array.isArray(data.positions)) {
-      store.updatePositions(data.positions);
-    }
-    if (data.position) {
-      store.updatePosition(data.position.position_id, data.position);
-    }
-    if (data.trade) {
-      store.addTrade(data.trade);
-    }
-    if (data.trades && Array.isArray(data.trades)) {
-      store.updateTrades(data.trades);
-    }
-    if (data.metrics) {
-      store.updateMetrics(data.metrics);
-    }
     if (data.health) {
       Object.entries(data.health).forEach(([source, status]) => {
         store.updateHealth(source, status);
@@ -53,9 +38,6 @@ export function useRealTimeData() {
     }
     if (data.equity_point) {
       store.addEquityPoint(data.equity_point);
-    }
-    if (data.mode) {
-      store.setMode(data.mode);
     }
   }, []);
 
@@ -73,13 +55,8 @@ export function useRealTimeData() {
     const store = useBotStore.getState();
     store.setConnectionState('reconnecting');
 
-    console.log(
-      `Reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`
-    );
-
     reconnectTimeoutRef.current = setTimeout(() => {
       if (mountedRef.current) {
-        // Signal to connect from useEffect
         wsRef.current = { needsConnect: true };
       }
     }, delay);
@@ -110,9 +87,6 @@ export function useRealTimeData() {
     const wsHost = API_BASE_URL.replace(/https?:\/\//, '');
     const wsUrl = `${protocol}://${wsHost}/stream`;
 
-    console.log('Connecting to:', wsUrl);
-
-    // First check if API is healthy
     fetch(`${API_BASE_URL}/health`)
       .then(res => {
         if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
@@ -120,20 +94,17 @@ export function useRealTimeData() {
       })
       .then(health => {
         if (!mountedRef.current) return;
-        
-        // Update health in store
+
         const st = useBotStore.getState();
         Object.entries(health).forEach(([source, status]) => {
           st.updateHealth(source, status);
         });
 
-        // Now connect WebSocket
         try {
           const ws = new WebSocket(wsUrl);
 
           ws.onopen = () => {
             if (!mountedRef.current) return;
-            console.log('WebSocket connected');
             reconnectAttemptsRef.current = 0;
             const st = useBotStore.getState();
             st.setConnectionState('connected');
@@ -152,15 +123,13 @@ export function useRealTimeData() {
             }
           };
 
-          ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
+          ws.onerror = () => {
             const st = useBotStore.getState();
             st.setConnectionError('WebSocket connection failed');
           };
 
           ws.onclose = () => {
             if (mountedRef.current) {
-              console.log('WebSocket closed');
               const delay = Math.min(
                 BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current),
                 30000
@@ -171,7 +140,6 @@ export function useRealTimeData() {
 
           wsRef.current = ws;
         } catch (err) {
-          console.error('Failed to create WebSocket:', err);
           const st = useBotStore.getState();
           st.setConnectionError(err.message);
           const delay = Math.min(
@@ -183,7 +151,6 @@ export function useRealTimeData() {
       })
       .catch(err => {
         if (!mountedRef.current) return;
-        console.error('Health check failed:', err);
         const st = useBotStore.getState();
         st.setConnectionError('API server not responding');
         const delay = Math.min(
@@ -194,7 +161,6 @@ export function useRealTimeData() {
       });
   }, [handleStreamMessage, resetHeartbeat, scheduleReconnect]);
 
-  // Main effect for connection management
   useEffect(() => {
     mountedRef.current = true;
     connect();

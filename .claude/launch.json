@@ -4,7 +4,7 @@
     {
       "name": "FastAPI Backend",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "uvicorn", "app:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "runtimeArgs": ["-m", "uvicorn", "app:app", "--reload", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "web/backend"],
       "port": 8000
     },
     {
@@ -13,5 +13,6 @@
       "runtimeArgs": ["--prefix", "web/frontend", "run", "dev"],
       "port": 3000
     }
-  ]
+  ],
+  "autoVerify": false
 }

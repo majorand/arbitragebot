@@ -1,49 +1,31 @@
 import { create } from 'zustand';
 
 /**
- * Central state management for live bot data
- * Uses Zustand for simple, performant state updates
- * All components read from this store for real-time data
+ * Central state management for the arbitrage scanner
+ * Display-only mode - no trade execution
  */
 export const useBotStore = create((set, get) => ({
   // Connection state
-  connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected', 'reconnecting'
+  connectionState: 'disconnected',
   lastConnectionError: null,
   lastHeartbeat: null,
-
-  // Mode (paper vs live)
-  mode: 'paper',
-  paperTradingBalance: 10000, // Configurable balance for paper trading mode
 
   // Opportunities
   opportunities: [],
   bestOpportunity: null,
-
-  // Positions
-  positions: [],
-  openPositionsCount: 0,
-
-  // Trades
-  trades: [],
-  recentTrade: null,
-
-  // Metrics
-  metrics: {
-    total_trades: 0,
-    cash_balance: 0,
-    portfolio_value: 0,
-    total_pnl: 0,
-    win_rate: 0,
-    sharpe_ratio: 0,
-    max_drawdown: 0,
-    open_positions: 0,
-  },
 
   // Health status
   health: {
     kalshi: { status: 'unknown', latency: null, last_check: null },
     polymarket: { status: 'unknown', latency: null, last_check: null },
     supabase: { status: 'unknown', latency: null, last_check: null },
+  },
+
+  // Metrics (display-only stats)
+  metrics: {
+    total_markets: 0,
+    active_arbs: 0,
+    avg_edge: 0,
   },
 
   // Equity curve data (for charts)
@@ -54,26 +36,32 @@ export const useBotStore = create((set, get) => ({
   setConnectionError: (error) => set({ lastConnectionError: error }),
   setLastHeartbeat: (timestamp) => set({ lastHeartbeat: timestamp }),
 
-  setMode: (mode) => set({ mode }),
-  setPaperTradingBalance: (balance) => set({ paperTradingBalance: balance }),
-
-  // Update opportunities (merge with existing to prevent flicker)
+  // Update opportunities
   updateOpportunities: (newOpps) => {
-    set((state) => {
-      // Find best opportunity by edge
+    set(() => {
       const best = newOpps.reduce(
         (prev, curr) => ((curr.edge || 0) > (prev.edge || 0) ? curr : prev),
         newOpps[0] || null
       );
 
+      const arbs = newOpps.filter(o => o.is_arbitrage || (o.edge || 0) >= 1.5);
+      const avgEdge = arbs.length > 0
+        ? arbs.reduce((sum, o) => sum + (o.edge || 0), 0) / arbs.length
+        : 0;
+
       return {
         opportunities: newOpps,
         bestOpportunity: best && best.edge > 0 ? best : null,
+        metrics: {
+          total_markets: newOpps.length,
+          active_arbs: arbs.length,
+          avg_edge: avgEdge,
+        },
       };
     });
   },
 
-  // Update single opportunity (partial update, no flicker)
+  // Update single opportunity
   updateOpportunity: (marketId, updates) => {
     set((state) => {
       const updated = state.opportunities.map((opp) =>
@@ -90,46 +78,6 @@ export const useBotStore = create((set, get) => ({
         bestOpportunity: best && best.edge > 0 ? best : null,
       };
     });
-  },
-
-  // Update positions (merge with existing)
-  updatePositions: (newPositions) => {
-    set({
-      positions: newPositions,
-      openPositionsCount: newPositions.length,
-    });
-  },
-
-  // Update single position (partial update)
-  updatePosition: (positionId, updates) => {
-    set((state) => ({
-      positions: state.positions.map((pos) =>
-        pos.position_id === positionId ? { ...pos, ...updates } : pos
-      ),
-    }));
-  },
-
-  // Add trade to history (don't replace, just prepend)
-  addTrade: (trade) => {
-    set((state) => ({
-      trades: [trade, ...state.trades].slice(0, 50), // Keep last 50
-      recentTrade: trade,
-    }));
-  },
-
-  // Update trades list
-  updateTrades: (newTrades) => {
-    set({
-      trades: newTrades,
-      recentTrade: newTrades[0] || null,
-    });
-  },
-
-  // Update metrics (deep merge to preserve structure)
-  updateMetrics: (updates) => {
-    set((state) => ({
-      metrics: { ...state.metrics, ...updates },
-    }));
   },
 
   // Update health status
@@ -160,36 +108,23 @@ export const useBotStore = create((set, get) => ({
     set({ equityCurve: points });
   },
 
-  // Add single point to equity curve (for streaming updates)
   addEquityPoint: (point) => {
     set((state) => ({
-      equityCurve: [...state.equityCurve.slice(-89), point], // Keep last 90 points
+      equityCurve: [...state.equityCurve.slice(-89), point],
     }));
   },
 
-  // Reset all data (e.g., on disconnect)
+  // Reset
   reset: () => {
     set({
       connectionState: 'disconnected',
       opportunities: [],
       bestOpportunity: null,
-      positions: [],
-      trades: [],
-      metrics: {
-        total_trades: 0,
-        cash_balance: 0,
-        portfolio_value: 0,
-        total_pnl: 0,
-        win_rate: 0,
-        sharpe_ratio: 0,
-        max_drawdown: 0,
-        open_positions: 0,
-      },
+      metrics: { total_markets: 0, active_arbs: 0, avg_edge: 0 },
       equityCurve: [],
     });
   },
 
-  // Get full state snapshot (for debugging)
   getSnapshot: () => get(),
 }));
 
