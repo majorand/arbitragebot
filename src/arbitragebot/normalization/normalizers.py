@@ -284,7 +284,7 @@ class PolymarketNormalizer(BaseNormalizer):
         import re
         
         # Try "X vs Y" or "X v Y" pattern
-        vs_match = re.search(r"(.+?)\s+v[s]?\\.?\s+(.+)", title, re.IGNORECASE)
+        vs_match = re.search(r"(.+?)\s+vs?\.?\s+(.+)", title, re.IGNORECASE)
         if vs_match:
             return (vs_match.group(1).strip(), vs_match.group(2).strip())
         

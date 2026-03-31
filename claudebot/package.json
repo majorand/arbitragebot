@@ -1,0 +1,21 @@
+{
+  "name": "claudebot",
+  "version": "1.0.0",
+  "description": "Real-time sports arbitrage scanner and auto-executor",
+  "main": "src/cli.js",
+  "bin": {
+    "claudebot": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js scan --mode standard_arb --sports all --books 18 --threshold 0.03",
+    "demo": "node src/cli.js scan --mode standard_arb --sports all --books 18 --threshold 0.03",
+    "latency": "node src/cli.js scan --mode latency_arb --sports nfl,nba --books 18 --threshold 0.02",
+    "midpoint": "node src/cli.js scan --mode midpoint_arb --sports all --books 18 --threshold 0.04"
+  },
+  "keywords": ["arbitrage", "sports", "betting", "cli"],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0"
+  }
+}

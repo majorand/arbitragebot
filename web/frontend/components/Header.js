@@ -1,77 +1,60 @@
-import { Activity, AlertTriangle, Power } from 'lucide-react';
+import { Activity, Zap, Radio } from 'lucide-react';
 
-export default function Header({ mode, onModeChange, isHealthy, stats }) {
+export default function Header({ isHealthy, stats }) {
   return (
-    <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
+    <header className="sticky top-0 z-40 border-b border-cyan-500/10 bg-[#0a0e1a]/90 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo and Title */}
+          {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600/20 rounded-lg">
-              <Activity className="w-6 h-6 text-blue-400" />
+            <div className="relative p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-cyan-500/20">
+              <Activity className="w-6 h-6 text-cyan-400" />
+              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Arbitrage Bot</h1>
-              <p className="text-xs text-gray-400">Sports Betting Edge Finder</p>
+              <h1 className="text-lg font-bold gradient-text tracking-tight">ARB SCANNER</h1>
+              <p className="text-[10px] text-cyan-500/60 uppercase tracking-[0.2em] font-mono">Cross-Platform Edge Detection</p>
             </div>
           </div>
 
           {/* Center Stats */}
-          <div className="hidden md:flex items-center gap-8">
-            <div className="text-center">
-              <p className="text-xs text-gray-400">Total Trades</p>
-              <p className="text-lg font-bold text-white">{stats?.total_trades || 0}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-400">Balance</p>
-              <p className="text-lg font-bold text-green-400">${(stats?.cash_balance || 0).toFixed(2)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-400">Open Positions</p>
-              <p className="text-lg font-bold text-blue-400">{stats?.open_positions || 0}</p>
-            </div>
+          <div className="hidden md:flex items-center gap-1">
+            {[
+              { label: 'OPPORTUNITIES', value: stats?.opportunities || 0, color: 'text-cyan-400' },
+              { label: 'AVG EDGE', value: `${(stats?.avg_edge || 0).toFixed(1)}%`, color: 'text-green-400' },
+              { label: 'MARKETS', value: stats?.total_markets || 0, color: 'text-purple-400' },
+            ].map((stat) => (
+              <div key={stat.label} className="px-4 py-1 text-center border-r border-cyan-900/30 last:border-0">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wider font-mono">{stat.label}</p>
+                <p className={`text-sm font-bold font-mono ${stat.color}`}>{stat.value}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Right Controls */}
-          <div className="flex items-center gap-4">
-            {/* Health Indicator */}
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isHealthy ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-              <span className="text-sm text-gray-300">{isHealthy ? 'Healthy' : 'Error'}</span>
+          {/* Status */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0d1224] border border-cyan-500/20">
+              {isHealthy ? (
+                <>
+                  <Radio className="w-3.5 h-3.5 text-green-400 animate-pulse" />
+                  <span className="text-xs font-mono text-green-400">SCANNING</span>
+                </>
+              ) : (
+                <>
+                  <Radio className="w-3.5 h-3.5 text-red-400" />
+                  <span className="text-xs font-mono text-red-400">OFFLINE</span>
+                </>
+              )}
             </div>
-
-            {/* Mode Toggle */}
-            <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1">
-              <button
-                onClick={() => onModeChange('paper')}
-                className={`px-4 py-1.5 rounded font-semibold text-sm transition-all ${
-                  mode === 'paper'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                📄 PAPER
-              </button>
-              <button
-                onClick={() => onModeChange('live')}
-                className={`px-4 py-1.5 rounded font-semibold text-sm transition-all ${
-                  mode === 'live'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                🔴 LIVE
-              </button>
+            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+              <Zap className="w-4 h-4 text-cyan-400" />
             </div>
-
-            {/* Kill Switch */}
-            <button className="p-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors"
-              title="Kill Switch - Cancel all orders">
-              <Power className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Animated bottom border */}
+      <div className="h-[1px] w-full data-flow-line" />
     </header>
   );
 }

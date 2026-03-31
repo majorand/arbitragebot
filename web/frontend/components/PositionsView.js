@@ -1,132 +1,113 @@
-import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart3, TrendingUp } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
-export default function PositionsView({ positions = [] }) {
-  const mockPnLData = [
-    { date: 'Mon', value: 1000 },
-    { date: 'Tue', value: 1250 },
-    { date: 'Wed', value: 1100 },
-    { date: 'Thu', value: 1450 },
-    { date: 'Fri', value: 1380 },
-    { date: 'Sat', value: 1520 },
-    { date: 'Sun', value: 1680 },
-  ];
+export default function PositionsView({ opportunities = [] }) {
+  // Generate edge history from opportunities
+  const edgeData = opportunities
+    .filter(o => o.edge > 0)
+    .slice(0, 10)
+    .map((opp, i) => ({
+      name: (opp.event_name || opp.event || 'Market').substring(0, 15) + '...',
+      edge: opp.edge || 0,
+    }));
 
-  const totalRealizedPnL = positions.reduce((sum, p) => sum + (p.realizedPnL || 0), 0);
-  const totalUnrealizedPnL = positions.reduce((sum, p) => sum + (p.unrealizedPnL || 0), 0);
+  const avgEdge = edgeData.length > 0
+    ? edgeData.reduce((sum, d) => sum + d.edge, 0) / edgeData.length
+    : 0;
+
+  const maxEdge = edgeData.length > 0
+    ? Math.max(...edgeData.map(d => d.edge))
+    : 0;
+
+  const arbCount = opportunities.filter(o => o.is_arbitrage || (o.edge || 0) >= 1.5).length;
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
+    <div className="grid md:grid-cols-2 gap-6 animate-fadeInUp">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="card-dark p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 uppercase">Realized PnL</p>
-              <p className={`text-2xl font-bold mt-2 ${totalRealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${totalRealizedPnL.toFixed(2)}
-              </p>
-            </div>
-            <TrendingUp className={`w-8 h-8 ${totalRealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-          </div>
+        <div className="card-dark p-4 glow-cyan">
+          <p className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">Active Arb Opps</p>
+          <p className="text-3xl font-black font-mono text-cyan-400 mt-2">{arbCount}</p>
+          <p className="text-[10px] font-mono text-gray-600 mt-1">Cross-platform</p>
         </div>
 
-        <div className="card-dark p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 uppercase">Unrealized PnL</p>
-              <p className={`text-2xl font-bold mt-2 ${totalUnrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${totalUnrealizedPnL.toFixed(2)}
-              </p>
-            </div>
-            <DollarSign className={`w-8 h-8 ${totalUnrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-          </div>
+        <div className="card-dark p-4 glow-green">
+          <p className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">Avg Edge</p>
+          <p className="text-3xl font-black font-mono text-green-400 mt-2">{avgEdge.toFixed(2)}%</p>
+          <p className="text-[10px] font-mono text-gray-600 mt-1">Across opps</p>
         </div>
 
-        <div className="card-dark p-4">
-          <p className="text-xs text-gray-400 uppercase">Open Positions</p>
-          <p className="text-2xl font-bold mt-2 text-blue-400">{positions.length}</p>
+        <div className="card-dark p-4 glow-purple">
+          <p className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">Max Edge</p>
+          <p className="text-3xl font-black font-mono text-purple-400 mt-2">{maxEdge.toFixed(2)}%</p>
+          <p className="text-[10px] font-mono text-gray-600 mt-1">Best available</p>
         </div>
 
-        <div className="card-dark p-4">
-          <p className="text-xs text-gray-400 uppercase">Win Rate</p>
-          <p className="text-2xl font-bold mt-2 text-blue-400">68%</p>
+        <div className="card-dark p-4 glow-amber">
+          <p className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">Markets</p>
+          <p className="text-3xl font-black font-mono text-amber-400 mt-2">{opportunities.length}</p>
+          <p className="text-[10px] font-mono text-gray-600 mt-1">Total scanned</p>
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Edge Chart */}
       <div className="card-dark p-4">
-        <h3 className="text-sm font-semibold text-white mb-4">Equity Curve (7 days)</h3>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={mockPnLData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-            <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}
-              labelStyle={{ color: '#fff' }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="value" 
-              stroke="#3b82f6" 
-              strokeWidth={2} 
-              dot={false}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Positions Table */}
-      <div className="md:col-span-2 card-dark p-6">
-        <h3 className="text-lg font-bold text-white mb-4">Open Positions</h3>
-        {positions.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-400">No open positions</p>
-          </div>
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-4 h-4 text-cyan-500" />
+          <h3 className="text-sm font-bold text-white font-mono">Edge Distribution</h3>
+        </div>
+        {edgeData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={edgeData}>
+              <defs>
+                <linearGradient id="edgeGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(56, 189, 248, 0.08)" />
+              <XAxis dataKey="name" stroke="#4b5563" style={{ fontSize: '9px', fontFamily: 'monospace' }} />
+              <YAxis stroke="#4b5563" style={{ fontSize: '10px', fontFamily: 'monospace' }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#0d1224',
+                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                }}
+                labelStyle={{ color: '#06b6d4' }}
+              />
+              <Area
+                type="monotone"
+                dataKey="edge"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                fill="url(#edgeGradient)"
+                dot={{ fill: '#06b6d4', r: 3, strokeWidth: 0 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="px-4 py-3 text-left text-gray-400 font-semibold">Instrument</th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-semibold">Direction</th>
-                  <th className="px-4 py-3 text-right text-gray-400 font-semibold">Size</th>
-                  <th className="px-4 py-3 text-right text-gray-400 font-semibold">Entry</th>
-                  <th className="px-4 py-3 text-right text-gray-400 font-semibold">Current</th>
-                  <th className="px-4 py-3 text-right text-gray-400 font-semibold">Unrealized PnL</th>
-                  <th className="px-4 py-3 text-center text-gray-400 font-semibold">Mode</th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((pos, idx) => (
-                  <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50">
-                    <td className="px-4 py-3 font-medium text-white">{pos.instrument}</td>
-                    <td className="px-4 py-3">
-                      <span className={`font-semibold ${pos.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
-                        {pos.direction}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-300">{pos.size}</td>
-                    <td className="px-4 py-3 text-right text-gray-300">${(pos.entryPrice || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-gray-300">${(pos.currentPrice || 0).toFixed(2)}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${(pos.unrealizedPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${(pos.unrealizedPnL || 0).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                        pos.mode === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {pos.mode || 'paper'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex items-center justify-center h-[200px] text-gray-600 font-mono text-xs">
+            No edge data available
           </div>
         )}
+      </div>
+
+      {/* Info banner */}
+      <div className="md:col-span-2 card-dark p-5">
+        <div className="flex items-start gap-3">
+          <TrendingUp className="w-5 h-5 text-cyan-500 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="text-sm font-bold text-white mb-1">Display-Only Mode</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              This scanner detects real arbitrage opportunities across Kalshi and Polymarket.
+              Click the exchange links on any opportunity to manually place your trades.
+              The scanner updates in real-time as prices change across platforms.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

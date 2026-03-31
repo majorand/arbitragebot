@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 
-MarketType = Literal["moneyline", "spread", "total"]
+MarketType = Literal["moneyline", "spread", "total", "binary"]
 
 
 @dataclass

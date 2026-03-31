@@ -1,130 +1,155 @@
-import { TrendingUp, ChevronRight, ExternalLink } from 'lucide-react';
+import { TrendingUp, ExternalLink, Crosshair, ArrowUpRight } from 'lucide-react';
 
-/**
- * @typedef {import('../lib/opportunityTypes').BinaryOpportunity} BinaryOpportunity
- */
-
-export default function BestOpportunity({ opportunity, onExecute, onSkip, onIgnore, isLive }) {
+export default function BestOpportunity({ opportunity }) {
   if (!opportunity) {
     return (
-      <div className="card-dark p-6 border-dashed border-2 border-gray-700 flex items-center justify-center min-h-48">
+      <div className="card-dark p-8 border-dashed border-2 border-cyan-900/30 flex items-center justify-center min-h-48">
         <div className="text-center">
-          <TrendingUp className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">No opportunities found</p>
-          <p className="text-sm text-gray-500 mt-1">Monitor real-time odds to find arbitrage opportunities</p>
+          <Crosshair className="w-12 h-12 text-cyan-900/40 mx-auto mb-3 animate-pulse" />
+          <p className="text-gray-500 font-mono text-sm">SCANNING FOR ARBITRAGE...</p>
+          <p className="text-xs text-gray-600 mt-1">Monitoring Kalshi & Polymarket in real-time</p>
         </div>
       </div>
     );
   }
 
+  const edgeValue = opportunity.edge?.toFixed(2) || '0.00';
+  const isHighEdge = (opportunity.edge || 0) >= 3;
+
   return (
-    <div className="card-dark p-6 border border-blue-500/30 bg-gradient-to-r from-blue-900/20 to-transparent">
-      <div className="flex items-start justify-between mb-4">
+    <div className={`card-dark p-6 relative overflow-hidden animate-fadeInUp ${isHighEdge ? 'glow-green' : 'glow-cyan'}`}>
+      {/* Shimmer overlay */}
+      <div className="absolute inset-0 shimmer pointer-events-none" />
+
+      {/* Header row */}
+      <div className="relative flex items-start justify-between mb-5">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-blue-400" />
-            Best Opportunity
-          </h2>
-          <p className="text-sm text-gray-400 mt-1">Execute in {isLive ? 'LIVE' : 'PAPER'} mode</p>
-          <p className="text-xs text-blue-200 mt-1 uppercase tracking-widest">
-            {opportunity.providers?.map((p) => p?.toUpperCase()).join(' ↔ ') || 'KALSHI ↔ FANATICS'}
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-2 h-2 rounded-full ${isHighEdge ? 'bg-green-400' : 'bg-cyan-400'} animate-pulse`} />
+            <span className="text-[10px] font-mono text-cyan-500/80 uppercase tracking-[0.15em]">Top Opportunity</span>
+          </div>
+          <h2 className="text-xl font-bold text-white">{opportunity.event_name || opportunity.event || 'Market'}</h2>
+          <p className="text-xs text-cyan-400/60 font-mono mt-1 uppercase tracking-widest">
+            {opportunity.providers?.map((p) => p?.toUpperCase()).join(' ↔ ') || 'KALSHI ↔ POLYMARKET'}
           </p>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-bold text-green-400">{opportunity.edge?.toFixed(2)}%</div>
-          <div className="text-sm text-gray-400">Edge</div>
+          <div className={`text-4xl font-black font-mono ${isHighEdge ? 'text-green-400 text-glow-green' : 'text-cyan-400 text-glow-cyan'}`}>
+            {edgeValue}%
+          </div>
+          <div className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Edge Detected</div>
         </div>
       </div>
 
+      {/* Legs */}
       {opportunity.legs && opportunity.legs.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
           {opportunity.legs.map((leg, index) => {
             const legOdds = leg.decimal_odds ?? 0;
             const legStake = leg.recommended_stake ?? 0;
             const legReturn = leg.expected_return ?? 0;
+            const isKalshi = (leg.provider || '').toLowerCase().includes('kalshi');
             return (
-              <div key={`${leg.provider}-${index}`} className="bg-gray-800/60 rounded-lg p-4 border border-gray-700">
-                <p className="text-[11px] text-gray-400 uppercase tracking-wide">{leg.provider}</p>
-                <p className="text-sm font-semibold text-white mt-1">{leg.selection}</p>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Odds: {legOdds.toFixed(3)} · Stake ${legStake.toFixed(2)}
-                </p>
-                <p className="text-[11px] text-green-300">Return: ${legReturn.toFixed(2)}</p>
+              <div key={`${leg.provider}-${index}`} className={`rounded-lg p-4 border ${
+                isKalshi
+                  ? 'bg-cyan-500/5 border-cyan-500/20'
+                  : 'bg-purple-500/5 border-purple-500/20'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-mono uppercase tracking-wider ${
+                    isKalshi ? 'text-cyan-400' : 'text-purple-400'
+                  }`}>{leg.provider}</span>
+                  <span className="text-[10px] font-mono text-gray-500">LEG {index + 1}</span>
+                </div>
+                <p className="text-sm font-semibold text-white">{leg.selection}</p>
+                <div className="flex items-center gap-3 mt-2 text-[11px] font-mono text-gray-400">
+                  <span>Odds: <span className="text-white">{legOdds.toFixed(3)}</span></span>
+                  <span>Stake: <span className="text-white">${legStake.toFixed(2)}</span></span>
+                </div>
+                <p className="text-[11px] font-mono text-green-400 mt-1">Return: ${legReturn.toFixed(2)}</p>
               </div>
             );
           })}
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-800/50 rounded-lg p-4">
-          <p className="text-xs text-gray-400 uppercase">Market</p>
-          <p className="text-sm font-semibold text-white mt-1">{opportunity.market || 'Market Name'}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-4">
-          <p className="text-xs text-gray-400 uppercase">Event</p>
-          <p className="text-sm font-semibold text-white mt-1">{opportunity.event || 'Team vs Team'}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-4">
-          <p className="text-xs text-gray-400 uppercase">Venues</p>
-          <p className="text-sm font-semibold text-white mt-1">{opportunity.venues || 'Kalshi, ESPN'}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-4">
-          <p className="text-xs text-gray-400 uppercase">EV (est.)</p>
-          <p className="text-sm font-semibold text-green-400 mt-1">${opportunity.ev?.toFixed(2) || '0.00'}</p>
-        </div>
+      {/* Details grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {[
+          { label: 'Market', value: opportunity.market || 'Binary' },
+          { label: 'Sport', value: (opportunity.sport || 'Event').toUpperCase() },
+          { label: 'Best YES', value: opportunity.best_yes ? `${opportunity.best_yes.provider} @ ${opportunity.best_yes.price?.toFixed(3)}` : '--' },
+          { label: 'Best NO', value: opportunity.best_no ? `${opportunity.best_no.provider} @ ${opportunity.best_no.price?.toFixed(3)}` : '--' },
+        ].map((item) => (
+          <div key={item.label} className="bg-[#0a0e1a]/60 rounded-lg p-3 border border-cyan-900/20">
+            <p className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">{item.label}</p>
+            <p className="text-sm font-semibold text-white mt-1 truncate">{item.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="bg-gray-800/30 rounded-lg p-4 mb-6 border border-gray-700">
-        <p className="text-sm text-gray-300 mb-2"><span className="font-semibold">Recommendation:</span> {opportunity.recommendation || 'Buy YES on Kalshi'}</p>
-        <p className="text-xs text-gray-400">{opportunity.reason || 'Implied probability difference detected'}</p>
-      </div>
-
-      {opportunity.links && (opportunity.links.kalshi || opportunity.links.fanatics) && (
-        <div className="flex flex-wrap gap-3 text-xs text-gray-300 mb-6">
-          {opportunity.links.kalshi && (
-            <a
-              href={opportunity.links.kalshi}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 text-blue-300 font-semibold"
-            >
-              Kalshi <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-          {opportunity.links.fanatics && (
-            <a
-              href={opportunity.links.fanatics}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 text-purple-300 font-semibold"
-            >
-              Fanatics <ExternalLink className="w-3 h-3" />
-            </a>
+      {/* Recommendation */}
+      {opportunity.recommendation && (
+        <div className="bg-cyan-500/5 rounded-lg p-4 mb-5 border border-cyan-500/15">
+          <p className="text-xs font-mono text-cyan-300">
+            <span className="text-cyan-500 font-bold">SIGNAL:</span> {opportunity.recommendation}
+          </p>
+          {opportunity.reason && (
+            <p className="text-[11px] text-gray-500 mt-1">{opportunity.reason}</p>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
-        <button
-          onClick={onExecute}
-          className="button-primary w-full flex items-center justify-center gap-2"
-        >
-          <span>Execute Trade</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
-        <button
-          onClick={onSkip}
-          className="button-secondary w-full"
-        >
-          Skip
-        </button>
-        <button
-          onClick={onIgnore}
-          className="button-secondary w-full"
-        >
-          Ignore
-        </button>
+      {/* Trade Links - DISPLAY ONLY */}
+      <div className="flex flex-wrap gap-3">
+        {opportunity.links?.kalshi && (
+          <a
+            href={opportunity.links.kalshi}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all duration-300 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/50 hover:shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+            Trade on Kalshi
+            <ExternalLink className="w-3.5 h-3.5 opacity-50" />
+          </a>
+        )}
+        {opportunity.links?.polymarket && (
+          <a
+            href={opportunity.links.polymarket}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all duration-300 bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(139,92,246,0.2)]"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+            Trade on Polymarket
+            <ExternalLink className="w-3.5 h-3.5 opacity-50" />
+          </a>
+        )}
+        {!opportunity.links?.kalshi && !opportunity.links?.polymarket && (
+          <>
+            <a
+              href="https://kalshi.com"
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all duration-300 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+              Open Kalshi
+              <ExternalLink className="w-3.5 h-3.5 opacity-50" />
+            </a>
+            <a
+              href="https://polymarket.com"
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all duration-300 bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+              Open Polymarket
+              <ExternalLink className="w-3.5 h-3.5 opacity-50" />
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

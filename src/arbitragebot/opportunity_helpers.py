@@ -61,8 +61,8 @@ def _build_provider_link(provider: str, event_name: str) -> str:
     safe_query = quote_plus(event_name or '')
     if provider == PROVIDER_KALSHI:
         return f"https://kalshi.com/search?query={safe_query}"
-    if provider == PROVIDER_FANATICS:
-        return f"https://www.fanatics.com/search?q={safe_query}"
+    if provider == PROVIDER_POLYMARKET:
+        return f"https://polymarket.com/search?query={safe_query}"
     return ""
 
 
@@ -144,7 +144,7 @@ def _evaluate_combo(
     providers = sorted(ALLOWED_PROVIDERS)
     links = {
         PROVIDER_KALSHI: _build_provider_link(PROVIDER_KALSHI, event_name),
-        PROVIDER_FANATICS: _build_provider_link(PROVIDER_FANATICS, event_name),
+        PROVIDER_POLYMARKET: _build_provider_link(PROVIDER_POLYMARKET, event_name),
     }
 
     execution_risk = "low" if edge_pct >= 2.0 else "medium"
@@ -186,11 +186,11 @@ def _evaluate_combo(
         expected_profit=expected_profit,
         yes_quotes={
             PROVIDER_KALSHI: true_leg.implied_probability if true_provider == PROVIDER_KALSHI else instrument.outcomes.get("true", {}).get(PROVIDER_KALSHI, 0.0),
-            PROVIDER_FANATICS: true_leg.implied_probability if true_provider == PROVIDER_FANATICS else instrument.outcomes.get("true", {}).get(PROVIDER_FANATICS, 0.0),
+            PROVIDER_POLYMARKET: true_leg.implied_probability if true_provider == PROVIDER_POLYMARKET else instrument.outcomes.get("true", {}).get(PROVIDER_POLYMARKET, 0.0),
         },
         no_quotes={
             PROVIDER_KALSHI: false_leg.implied_probability if false_provider == PROVIDER_KALSHI else instrument.outcomes.get("false", {}).get(PROVIDER_KALSHI, 0.0),
-            PROVIDER_FANATICS: false_leg.implied_probability if false_provider == PROVIDER_FANATICS else instrument.outcomes.get("false", {}).get(PROVIDER_FANATICS, 0.0),
+            PROVIDER_POLYMARKET: false_leg.implied_probability if false_provider == PROVIDER_POLYMARKET else instrument.outcomes.get("false", {}).get(PROVIDER_POLYMARKET, 0.0),
         },
     )
 
@@ -205,8 +205,8 @@ def _better_opportunity(
     false_quotes = instrument.outcomes.get("false", {})
 
     for true_provider, false_provider in [
-        (PROVIDER_KALSHI, PROVIDER_FANATICS),
-        (PROVIDER_FANATICS, PROVIDER_KALSHI),
+        (PROVIDER_KALSHI, PROVIDER_POLYMARKET),
+        (PROVIDER_POLYMARKET, PROVIDER_KALSHI),
     ]:
         true_prob = true_quotes.get(true_provider)
         false_prob = false_quotes.get(false_provider)

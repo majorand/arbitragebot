@@ -1,11 +1,7 @@
-import { ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
+import { ExternalLink, ArrowUpRight, Filter, SortDesc } from 'lucide-react';
 import { useState } from 'react';
 
-/**
- * @typedef {import('../lib/opportunityTypes').BinaryOpportunity} BinaryOpportunity
- */
-
-const REQUIRED_PROVIDERS = ['kalshi', 'fanatics'];
+const REQUIRED_PROVIDERS = ['kalshi', 'polymarket'];
 
 const isStrictBinaryOpportunity = (opp) => {
   const providers = opp?.providers || opp?.sources || [];
@@ -15,15 +11,14 @@ const isStrictBinaryOpportunity = (opp) => {
   );
 };
 
-export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy = 'volume', filterEdge = 0 }) {
-  const [expandedId, setExpandedId] = useState(null);
+export default function OpportunitiesTable({ opportunities = [], sortBy = 'edge', filterEdge = 0 }) {
   const [sort, setSort] = useState(sortBy);
   const [minEdge, setMinEdge] = useState(filterEdge);
 
   const filtered = opportunities.filter(
     (opp) => (opp.edge || 0) >= minEdge && isStrictBinaryOpportunity(opp)
   );
-  
+
   const sorted = [...filtered].sort((a, b) => {
     switch (sort) {
       case 'edge':
@@ -39,46 +34,45 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
     }
   });
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'new':
-        return 'status-info';
-      case 'filled':
-        return 'status-success';
-      case 'pending':
-        return 'status-warning';
-      case 'rejected':
-        return 'status-danger';
-      default:
-        return 'status-info';
-    }
-  };
-
   return (
-    <div className="card-dark p-6">
-      <h2 className="text-xl font-bold text-white mb-4">Opportunities</h2>
+    <div className="card-dark p-6 animate-fadeInUp">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-bold text-white">Live Opportunities</h2>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+            {sorted.length} FOUND
+          </span>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="flex gap-4 mb-6">
         <div className="flex-1">
-          <label className="text-sm text-gray-400">Minimum Edge (%)</label>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Filter className="w-3 h-3 text-gray-500" />
+            <label className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Min Edge %</label>
+          </div>
           <input
             type="number"
             value={minEdge}
-            onChange={(e) => setMinEdge(parseFloat(e.target.value))}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm mt-1"
+            onChange={(e) => setMinEdge(parseFloat(e.target.value) || 0)}
+            className="w-full"
             placeholder="0"
           />
         </div>
         <div className="flex-1">
-          <label className="text-sm text-gray-400">Sort By</label>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <SortDesc className="w-3 h-3 text-gray-500" />
+            <label className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Sort By</label>
+          </div>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm mt-1"
+            className="w-full"
           >
-            <option value="volume">Highest Trading Volume</option>
             <option value="edge">Highest Edge</option>
+            <option value="volume">Highest Volume</option>
             <option value="time">Newest First</option>
             <option value="liquidity">Best Liquidity</option>
           </select>
@@ -87,170 +81,160 @@ export default function OpportunitiesTable({ opportunities = [], onTrade, sortBy
 
       {/* Table */}
       {sorted.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-400">No opportunities match your filters</p>
+        <div className="text-center py-16">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-cyan-500/5 border border-cyan-500/20 flex items-center justify-center">
+            <Filter className="w-6 h-6 text-cyan-900/60" />
+          </div>
+          <p className="text-gray-500 font-mono text-sm">No opportunities match filters</p>
+          <p className="text-gray-600 text-xs mt-1">Try lowering the minimum edge %</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="px-4 py-3 text-left text-gray-400 font-semibold">Event & Market</th>
-                <th className="px-4 py-3 text-left text-gray-400 font-semibold">Arbitrage Details</th>
-                <th className="px-4 py-3 text-right text-gray-400 font-semibold">ROI %</th>
-                <th className="px-4 py-3 text-right text-gray-400 font-semibold">Stake Allocation</th>
-                <th className="px-4 py-3 text-center text-gray-400 font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((opp, idx) => {
-                const isArb = opp.is_arbitrage || opp.edge >= 1.5;
-                const eventLabel = opp.event_name || opp.event || 'Market';
-                const selectionLabel = (opp.selection || opp.market_type || 'Selection')
-                  .toString()
-                  .replace(/_/g, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim()
-                  .replace(/\b\w/g, (c) => c.toUpperCase());
+        <div className="space-y-3">
+          {sorted.map((opp, idx) => {
+            const isArb = opp.is_arbitrage || opp.edge >= 1.5;
+            const eventLabel = opp.event_name || opp.event || 'Market';
+            const providerSources = opp.providers || opp.sources || [];
+            const normalizedProviders = Array.isArray(providerSources)
+              ? providerSources.map((p) => (p || '').toUpperCase())
+              : [];
+            const sourcesLabel = normalizedProviders.length
+              ? normalizedProviders.join(' ↔ ')
+              : null;
+            const bestYes = opp.best_yes || null;
+            const bestNo = opp.best_no || null;
+            const isHighEdge = (opp.edge || 0) >= 3;
 
-                const providerSources = opp.providers || opp.sources || [];
-                  const normalizedProviders = Array.isArray(providerSources)
-                    ? providerSources.map((p) => (p || '').toUpperCase())
-                    : [];
-                  const sourcesLabel = normalizedProviders.length
-                    ? normalizedProviders.join(' ↔ ')
-                    : null;
-                const marketLabel = (opp.market || selectionLabel || 'WIN')
-                  .toString()
-                  .replace(/_/g, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim()
-                  .toUpperCase();
-                const bestYes = opp.best_yes || null;
-                const bestNo = opp.best_no || null;
-                const hasBestSides = !!(bestYes && bestYes.provider && typeof bestYes.price === 'number') ||
-                  !!(bestNo && bestNo.provider && typeof bestNo.price === 'number');
-
-                return (
-                  <tr key={idx} className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${isArb ? 'bg-green-500/5' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-white">{eventLabel}</p>
-                        <p className="text-xs text-gray-300">Market: {marketLabel}</p>
-                        <p className="text-xs text-blue-400 mt-1">{(opp.sport || 'SPORTS').toUpperCase()} · {opp.venue || 'Exchange'}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {hasBestSides ? (
-                        <div className="space-y-1">
-                          {sourcesLabel && (
-                            <p className="text-xs text-gray-300">Sources: {sourcesLabel}</p>
-                          )}
-                          {bestYes?.provider && typeof bestYes.price === 'number' && (
-                            <p className="text-xs text-white">
-                              Best YES: <span className="font-semibold">{bestYes.provider}</span> @ <span className="font-bold">{bestYes.price.toFixed(3)}</span>
-                            </p>
-                          )}
-                          {opp.links && (opp.links.kalshi || opp.links.fanatics) && (
-                            <div className="flex flex-wrap items-center gap-2 mt-2">
-                              {opp.links.kalshi && (
-                                <a
-                                  href={opp.links.kalshi}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-[11px] text-blue-300 font-semibold flex items-center gap-1"
-                                >
-                                  Kalshi <ExternalLink className="w-3 h-3" />
-                                </a>
-                              )}
-                              {opp.links.fanatics && (
-                                <a
-                                  href={opp.links.fanatics}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-[11px] text-purple-300 font-semibold flex items-center gap-1"
-                                >
-                                  Fanatics <ExternalLink className="w-3 h-3" />
-                                </a>
-                              )}
-                            </div>
-                          )}
-                          {bestNo?.provider && typeof bestNo.price === 'number' && (
-                            <p className="text-xs text-white">
-                              Best NO: <span className="font-semibold">{bestNo.provider}</span> @ <span className="font-bold">{bestNo.price.toFixed(3)}</span>
-                            </p>
-                          )}
-                        </div>
-                      ) : isArb && opp.vs_source ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
-                              Kalshi: {opp.selection}
-                            </span>
-                            <span className="text-xs text-gray-500">@</span>
-                            <span className="text-xs font-bold text-white">${opp.price?.toFixed(2)}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono bg-purple-500/20 text-purple-300 px-2 py-1 rounded">
-                              {opp.vs_source}: {opp.vs_selection}
-                            </span>
-                            <span className="text-xs text-gray-500">@</span>
-                            <span className="text-xs font-bold text-white">
-                              {opp.vs_american_odds > 0 ? '+' : ''}{opp.vs_american_odds?.toFixed(0)}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">No arbitrage detected</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`font-bold text-lg ${isArb ? 'text-green-400' : 'text-gray-400'}`}>
-                        {(opp.edge || opp.roi_percentage || 0).toFixed(2)}%
-                      </span>
+            return (
+              <div
+                key={idx}
+                className={`rounded-xl p-4 border transition-all duration-300 hover:translate-x-1 ${
+                  isHighEdge
+                    ? 'bg-green-500/5 border-green-500/20 hover:border-green-500/40'
+                    : isArb
+                    ? 'bg-cyan-500/5 border-cyan-500/15 hover:border-cyan-500/30'
+                    : 'bg-[#0d1224]/60 border-cyan-900/20 hover:border-cyan-900/40'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  {/* Left: Event info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
                       {isArb && (
-                        <p className="text-xs text-green-300 mt-1">✓ Arbitrage</p>
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                          isHighEdge
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                        }`}>
+                          ARB
+                        </span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {isArb && opp.stake_kalshi ? (
-                        <div className="space-y-1">
-                          <p className="text-sm text-white">
-                            Kalshi: <span className="font-bold">${opp.stake_kalshi}</span>
-                          </p>
-                          <p className="text-sm text-white">
-                            {opp.vs_source}: <span className="font-bold">${opp.stake_other}</span>
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            Total: ${(opp.stake_kalshi + opp.stake_other).toFixed(2)}
-                          </p>
+                      <span className="text-[9px] font-mono text-gray-500 uppercase">
+                        {(opp.sport || 'EVENT').toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-white text-sm truncate">{eventLabel}</p>
+                    {sourcesLabel && (
+                      <p className="text-[10px] font-mono text-cyan-500/60 mt-1">{sourcesLabel}</p>
+                    )}
+
+                    {/* Best prices */}
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      {bestYes?.provider && typeof bestYes.price === 'number' && (
+                        <div className="text-[11px] font-mono">
+                          <span className="text-gray-500">YES</span>{' '}
+                          <span className="text-cyan-400">{bestYes.provider}</span>{' '}
+                          <span className="text-white font-bold">{bestYes.price.toFixed(3)}</span>
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => onTrade(opp)}
-                        className={`text-xs py-1 px-3 rounded ${
-                          isArb
-                            ? 'bg-green-500 hover:bg-green-600 text-white font-bold'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                        }`}
+                      {bestNo?.provider && typeof bestNo.price === 'number' && (
+                        <div className="text-[11px] font-mono">
+                          <span className="text-gray-500">NO</span>{' '}
+                          <span className="text-purple-400">{bestNo.provider}</span>{' '}
+                          <span className="text-white font-bold">{bestNo.price.toFixed(3)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Center: Edge */}
+                  <div className="text-center px-4">
+                    <p className={`text-2xl font-black font-mono ${
+                      isHighEdge ? 'text-green-400' : isArb ? 'text-cyan-400' : 'text-gray-500'
+                    }`}>
+                      {(opp.edge || 0).toFixed(2)}%
+                    </p>
+                    <p className="text-[9px] font-mono text-gray-500 uppercase">Edge</p>
+                  </div>
+
+                  {/* Right: Trade links */}
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {opp.links?.kalshi ? (
+                      <a
+                        href={opp.links.kalshi}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-all"
                       >
-                        {isArb ? '⚡ Execute' : 'View'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        Kalshi <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <a
+                        href="https://kalshi.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/20 transition-all"
+                      >
+                        Kalshi <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {opp.links?.polymarket ? (
+                      <a
+                        href={opp.links.polymarket}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-purple-500/10 border border-purple-500/25 text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all"
+                      >
+                        Polymarket <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <a
+                        href="https://polymarket.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-purple-500/10 border border-purple-500/25 text-purple-300 hover:bg-purple-500/20 transition-all"
+                      >
+                        Polymarket <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stake allocation bar */}
+                {isArb && opp.best_yes?.stake && opp.best_no?.stake && (
+                  <div className="mt-3 pt-3 border-t border-cyan-900/20">
+                    <div className="flex items-center gap-3 text-[10px] font-mono">
+                      <span className="text-gray-500">ALLOCATION:</span>
+                      <span className="text-cyan-400">{opp.best_yes.provider} ${opp.best_yes.stake?.toFixed(2)}</span>
+                      <span className="text-gray-600">|</span>
+                      <span className="text-purple-400">{opp.best_no.provider} ${opp.best_no.stake?.toFixed(2)}</span>
+                      <span className="text-gray-600">|</span>
+                      <span className="text-white">Total ${((opp.best_yes.stake || 0) + (opp.best_no.stake || 0)).toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="mt-4 text-xs text-gray-400">
-        Showing {sorted.length} of {opportunities.length} opportunities
+      <div className="mt-4 pt-4 border-t border-cyan-900/20 flex items-center justify-between">
+        <p className="text-[10px] font-mono text-gray-600">
+          {sorted.length} of {opportunities.length} opportunities displayed
+        </p>
+        <p className="text-[10px] font-mono text-gray-600">
+          Updated {new Date().toLocaleTimeString()}
+        </p>
       </div>
     </div>
   );
